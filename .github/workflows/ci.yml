@@ -34,7 +34,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -e . pip-audit
-      - run: pip-audit --strict
+      - run: pip-audit --strict --skip-editable
 
   docker:
     runs-on: ubuntu-latest
