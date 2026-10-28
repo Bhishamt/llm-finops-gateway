@@ -1,0 +1,52 @@
+# Policy as code. Evaluated on every request, before the upstream call, keyed on X-Team.
+# Review changes here like code: a budget bump is a pull request, not a UI click.
+#
+#   allowed_models   list of model names from pricing.yaml, or ["*"] for any priced model
+#   budget.monthly_usd   month-to-date cap (UTC calendar month) computed from the ledger
+#   budget.warn_at       fraction of the cap at which responses carry a warning (default 0.8)
+#   budget.block_at      fraction at which calls are rejected with HTTP 403 (default 1.0)
+#   budget.enforcement   "block" (default) or "warn" (never block, only warn and log)
+#   budget.reserve_output_tokens   output tokens assumed when the request has no max_tokens (1024)
+#   rate_limit.requests_per_minute  per team, sliding 60 s window, HTTP 429 with Retry-After
+#
+# A team not listed under `teams` gets `defaults`. A team entry overrides only the keys it sets.
+version: "2026-11-01"
+
+defaults:
+  allowed_models: ["gpt-4o-mini", "gpt-4.1-mini", "llama3.2:3b", "llama3.1:8b", "mistral:7b"]
+  budget:
+    monthly_usd: 50
+    warn_at: 0.8
+    block_at: 1.0
+    enforcement: block
+  rate_limit:
+    requests_per_minute: 60
+
+teams:
+  platform:
+    allowed_models: ["*"]
+    budget:
+      monthly_usd: 500
+      warn_at: 0.8
+      block_at: 1.0
+      enforcement: block
+    rate_limit:
+      requests_per_minute: 600
+
+  research:
+    # Experiments: generous models, small budget, warn-only so a demo never dies mid-run.
+    allowed_models: ["gpt-4o", "gpt-4o-mini", "llama3.1:8b"]
+    budget:
+      monthly_usd: 20
+      warn_at: 0.5
+      block_at: 1.0
+      enforcement: warn
+
+  customer-support:
+    # Production use case: strict model list, hard stop at 100 %, early warning at 70 %.
+    allowed_models: ["gpt-4o-mini"]
+    budget:
+      monthly_usd: 200
+      warn_at: 0.7
+      block_at: 1.0
+      enforcement: block

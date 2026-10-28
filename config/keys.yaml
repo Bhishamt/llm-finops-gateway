@@ -1,0 +1,14 @@
+# Team API keys (ADR-0006). Only SHA-256 hashes live here, so this file is safe to commit.
+#
+# Create a key:   llm-finops-gateway keys new --team platform --id platform-copilot
+# It prints the raw key once (give it to the team) and the entry to paste below.
+# Rotate:         add the new entry, deploy, switch the client, set `disabled: true` on the old one.
+# Validate:       llm-finops-gateway keys check
+#
+# Fields: id (label, appears in ledger/traces), team, sha256, optional projects (restrict),
+#         created, expires (YYYY-MM-DD), disabled.
+#
+# With no keys listed every request gets 401 in api_key mode. For local development without
+# keys set LFG_AUTH_MODE=headers.
+version: "2026-11-15"
+keys: []

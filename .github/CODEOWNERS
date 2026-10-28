@@ -1,0 +1,12 @@
+# Default owner for everything; replace andrasKelle with the real handle.
+*                       @andrasKelle
+
+# Cost semantics and governance need the project lead
+/src/llm_finops_gateway/pricing.py      @andrasKelle
+/src/llm_finops_gateway/attribution.py  @andrasKelle
+/src/llm_finops_gateway/ledger.py       @andrasKelle
+/config/                @andrasKelle
+/docs/adr/              @andrasKelle
+/GOVERNANCE.md          @andrasKelle
+/CLA.md                 @andrasKelle
+/LICENSE                @andrasKelle

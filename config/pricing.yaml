@@ -1,0 +1,16 @@
+# Versioned price book. Prices are USD per 1M tokens.
+# Bump `version` whenever a price changes; every ledger row records the version it was
+# priced with, so historical chargeback stays reproducible.
+# Any model NOT listed here is rejected by the gateway (ADR-0002).
+version: "2026-11-01"
+currency: USD
+models:
+  # Azure OpenAI deployments (map model -> deployment with LFG_AZURE_OPENAI_DEPLOYMENTS)
+  gpt-4o: { input: 2.50, output: 10.00 }
+  gpt-4o-mini: { input: 0.15, output: 0.60 }
+  gpt-4.1: { input: 2.00, output: 8.00 }
+  gpt-4.1-mini: { input: 0.40, output: 1.60 }
+  # Local Ollama models. Zero today; amortised GPU/hour cost is on the roadmap.
+  "llama3.1:8b": { input: 0.00, output: 0.00 }
+  "llama3.2:3b": { input: 0.00, output: 0.00 }
+  "mistral:7b": { input: 0.00, output: 0.00 }

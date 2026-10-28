@@ -1,0 +1,30 @@
+# Demo policies: deliberately tiny budgets so a few hundred simulated calls hit every band.
+# The real defaults are in ../config/policies.yaml.
+version: "demo-2026-11"
+
+defaults:
+  allowed_models: ["gpt-4o-mini", "llama3.1:8b"]
+  budget:
+    monthly_usd: 0.01
+    warn_at: 0.8
+    block_at: 1.0
+    enforcement: block
+    reserve_output_tokens: 400   # closer to the simulated output sizes than the 1024 default
+
+teams:
+  platform:
+    allowed_models: ["*"]
+    budget: { monthly_usd: 0.15, warn_at: 0.8, block_at: 1.0, enforcement: block, reserve_output_tokens: 400 }
+
+  customer-support:
+    allowed_models: ["gpt-4o-mini"]
+    budget: { monthly_usd: 0.025, warn_at: 0.7, block_at: 1.0, enforcement: block, reserve_output_tokens: 400 }
+
+  research:
+    allowed_models: ["gpt-4o", "gpt-4o-mini", "llama3.1:8b"]
+    budget: { monthly_usd: 0.10, warn_at: 0.5, block_at: 1.0, enforcement: warn, reserve_output_tokens: 400 }
+
+  marketing:
+    allowed_models: ["gpt-4o-mini"]
+    budget: { monthly_usd: 0.03, warn_at: 0.8, block_at: 1.0, enforcement: block, reserve_output_tokens: 400 }
+    rate_limit: { requests_per_minute: 30 }

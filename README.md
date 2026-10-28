@@ -1,0 +1,310 @@
+# llm-finops-gateway
+
+[![CI](https://github.com/andrasKelle/llm-finops-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/andrasKelle/llm-finops-gateway/actions/workflows/ci.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
+
+**An OpenAI-compatible gateway that gives every LLM call an owner, a price and a policy.**
+
+Teams adopt LLMs faster than finance can allocate the bill and faster than security can enforce
+policy. This gateway sits between your applications and the model provider (Azure OpenAI or
+Ollama today) and, on every call:
+
+1. **Knows who is calling**: team-bound API keys (`Authorization: Bearer lfg_...`), hashes in
+   git, the raw key only in the team's secret store. The team cannot be spoofed with a header.
+2. **Attributes cost** to a team, project and use case, priced from a versioned price book, and
+   writes a ledger row you can charge back from.
+3. **Enforces policy as code**: per-team model allow-lists, requests-per-minute limits, and
+   monthly budgets with a warning threshold (default 80 %) and a blocking threshold (default
+   100 %), declared in YAML and reviewed in pull requests. Budgets are enforced with an atomic
+   reservation, so concurrent calls cannot slip past the limit.
+4. **Reports and observes**: chargeback and budget endpoints, Prometheus `/metrics`, and
+   OpenTelemetry spans with `finops.*` attributes (Grafana, Azure Monitor, Langfuse).
+
+Four rules are built in and intentional (see the [ADRs](docs/adr/)):
+
+- A model without a configured price is **rejected**, not billed at zero.
+- A call without an owner (key or `X-Team`, plus `X-Project`) is **rejected**, not guessed.
+- Budgets **warn before they block**, and both states are visible in headers, body, logs and
+  traces.
+- The budget is **reserved before the call**, settled after, released on failure.
+
+![Request path](docs/images/architecture.svg)
+
+## What it looks like
+
+A 300-call simulation across five teams (`python demo/run_demo.py`, no API keys needed):
+
+![Demo chargeback chart](docs/images/demo-chargeback.png)
+
+| team | ok | warned | blocked (budget) | blocked (model) | rate limited | unpriced model | no owner | spend USD | budget used |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| customer-support | 51 | 21 | 27 | 3 | 0 | 0 | 0 | 0.0250 | 100.1% (block) |
+| marketing | 30 | 0 | 0 | 0 | 9 | 5 | 0 | 0.0096 | 31.9% (ok) |
+| platform | 62 | 16 | 2 | 0 | 0 | 0 | 0 | 0.1472 | 98.1% (warn) |
+| research | 14 | 40 | 0 | 0 | 0 | 0 | 0 | 0.2064 | 206.4% (warn, warn-only) |
+| shadow-it | 6 | 0 | 0 | 0 | 0 | 0 | 14 | 0.0021 | 21.0% (ok) |
+
+Unallocated spend: **0.00 USD**, by construction.
+
+## Why not LiteLLM, Portkey or an API-management gateway?
+
+Those are good routing gateways and you may already run one. This project is deliberately
+narrower and FinOps-first. The differences that matter for a finance or platform team:
+
+| | llm-finops-gateway | Typical LLM gateways (LiteLLM, Portkey, Bifrost, Cloudflare AI Gateway) |
+| --- | --- | --- |
+| Cost owner | Mandatory `team` / `project` / `use_case` tags; untagged calls are rejected | Spend tied to an API key or "virtual key"; mapping keys to cost centres is manual |
+| Price list | Versioned YAML in git; every ledger row records the version it was priced with, so last quarter's chargeback can be recomputed | Built-in price table updated with the software; historical cost is whatever was computed at the time |
+| Unknown model | Rejected before the upstream call | Usually forwarded and logged with zero or missing cost |
+| Who is calling | Team-bound keys, hashes in git, `key_id` on every ledger row and trace | Virtual keys in a database or admin UI |
+| Budgets | Per team, warn and block thresholds, warn-only mode, atomic reservation, declared in YAML and reviewed in PRs | Per key, hard cap, configured in an admin UI or API |
+| Evaluation | Replay and regression scoring on recorded calls (roadmap) | Out of scope; separate observability product |
+| Routing, caching, fallbacks | Out of scope; run this behind a router if you need them | Core feature |
+
+A longer comparison with sources is in [docs/comparison.md](docs/comparison.md).
+
+## Quick start
+
+```bash
+git clone https://github.com/andrasKelle/llm-finops-gateway
+cd llm-finops-gateway
+python -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev,demo]"
+python demo/run_demo.py          # simulated traffic, no keys, writes demo/out/
+```
+
+Run `llm-finops-gateway serve` from the repository root (or set `LFG_*_PATH`): the price book,
+policies and key file are read from `config/` relative to the working directory.
+
+### Local models with Ollama (no keys, headers mode)
+
+```bash
+ollama pull llama3.2:3b
+LFG_AUTH_MODE=headers llm-finops-gateway serve --port 8080
+```
+
+```bash
+curl -s http://localhost:8080/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "X-Team: platform" -H "X-Project: demo" -H "X-Use-Case: smoke-test" \
+  -d '{"model": "llama3.2:3b", "messages": [{"role": "user", "content": "Say hi."}]}' | jq
+```
+
+### Team keys (the default, `LFG_AUTH_MODE=api_key`)
+
+```bash
+llm-finops-gateway keys new --team platform --id platform-copilot
+# prints the key once (lfg_...) and a YAML entry; paste the entry into config/keys.yaml
+llm-finops-gateway serve --port 8080
+curl -s http://localhost:8080/v1/chat/completions \
+  -H "Authorization: Bearer lfg_..." -H "X-Project: demo" \
+  -H "Content-Type: application/json" \
+  -d '{"model": "llama3.2:3b", "messages": [{"role": "user", "content": "Say hi."}]}' | jq .x_finops
+```
+
+The team comes from the key; an `X-Team` header, if sent, must match. Keys can be restricted
+to projects, given an expiry, and disabled. Only SHA-256 hashes are stored (ADR-0006).
+Rollout, rotation and the reference Azure deployment are in
+[docs/deployment.md](docs/deployment.md).
+
+### Azure OpenAI
+
+Create a `.env` (never commit it; see `.env.example`):
+
+```dotenv
+LFG_PROVIDER=azure_openai
+LFG_AZURE_OPENAI_ENDPOINT=https://<resource>.openai.azure.com
+LFG_AZURE_OPENAI_API_KEY=<key from Azure portal or Key Vault>
+LFG_AZURE_OPENAI_API_VERSION=2024-10-21
+# model name used by clients -> Azure deployment name
+LFG_AZURE_OPENAI_DEPLOYMENTS={"gpt-4o-mini": "gpt-4o-mini-eastus"}
+```
+
+Then run the gateway and call it with `"model": "gpt-4o-mini"`. Every model name you use must
+exist in `config/pricing.yaml`. A step-by-step `az` CLI walkthrough for a disposable test
+setup is in [docs/azure-setup.md](docs/azure-setup.md).
+
+### The response
+
+Standard OpenAI shape plus an `x_finops` block, and `X-FinOps-*` headers:
+
+```json
+{
+  "id": "gw-7f3a…", "object": "chat.completion", "model": "gpt-4o-mini",
+  "choices": [{ "index": 0, "message": { "role": "assistant", "content": "Hi!" }, "finish_reason": "stop" }],
+  "usage": { "prompt_tokens": 12, "completion_tokens": 3, "total_tokens": 15 },
+  "x_finops": {
+    "cost_usd": "0.0000036", "price_book_version": "2026-11-01",
+    "team": "platform", "project": "demo", "use_case": "smoke-test", "provider": "azure_openai",
+    "key_id": "platform-copilot",
+    "policy": {
+      "version": "2026-11-01",
+      "budget": { "limit_usd": "500", "spent_usd": "412.10", "reserved_usd": "0", "used_pct": "82.4",
+                  "remaining_usd": "87.90", "level": "warn", "enforcement": "block",
+                  "warn_at_pct": "80", "block_at_pct": "100" },
+      "warnings": ["team 'platform' has used 82.4% of its monthly budget (412.10 spent + 0 in flight of 500 USD); calls will be blocked at 100%"]
+    }
+  }
+}
+```
+
+```
+X-FinOps-Cost-USD: 0.0000036
+X-FinOps-Budget-Limit-USD: 500
+X-FinOps-Budget-Spent-USD: 412.10
+X-FinOps-Budget-Used-Pct: 82.4
+X-FinOps-Budget-Status: warn
+X-FinOps-Warning: team 'platform' has used 82.4% of its monthly budget (412.10 spent + 0 in flight of 500 USD); calls will be blocked at 100%
+X-FinOps-Request-Id: gw-7f3a…
+```
+
+When the estimated cost of the call does not fit the budget, it is refused before any
+provider call:
+
+```json
+HTTP 403
+{ "detail": { "error": "budget_exceeded",
+              "message": "team 'platform' has used 99.8% of its monthly budget (499.10 spent + 0 in flight of 500 USD); this call was estimated at 1.02 USD",
+              "team": "platform", "project": "demo", "model": "gpt-4o-mini",
+              "policy_version": "2026-11-01",
+              "budget": { "level": "block", "used_pct": "99.8", "remaining_usd": "0.90", "...": "..." } } }
+```
+
+Other rejections: `401 missing_api_key / invalid_api_key / api_key_expired / api_key_disabled`,
+`403 team_mismatch / project_not_allowed / model_not_allowed`, `429 rate_limited` with
+`Retry-After`, `422` unpriced model, `400` missing project, `502` upstream error (nothing is
+recorded, the reservation is released).
+
+### Point an OpenAI SDK at it
+
+```python
+from openai import OpenAI
+
+client = OpenAI(
+    base_url="http://localhost:8080/v1",
+    api_key="lfg_...",  # the team key
+    default_headers={"X-Project": "demo", "X-Use-Case": "chat"},
+)
+client.chat.completions.create(model="gpt-4o-mini", messages=[{"role": "user", "content": "hi"}])
+```
+
+## Policy as code
+
+[`config/policies.yaml`](config/policies.yaml):
+
+```yaml
+version: "2026-11-01"
+defaults:
+  allowed_models: ["gpt-4o-mini", "llama3.2:3b"]
+  budget: { monthly_usd: 50, warn_at: 0.8, block_at: 1.0, enforcement: block }
+teams:
+  platform:
+    allowed_models: ["*"]
+    budget: { monthly_usd: 500 }
+  research:
+    budget: { monthly_usd: 20, warn_at: 0.5, enforcement: warn }   # never blocks, only warns
+```
+
+- `warn_at` and `block_at` are fractions of `monthly_usd`; the budget is month to date (UTC).
+- Before each call the gateway reserves an estimate (prompt chars / 4, output = `max_tokens` or
+  `reserve_output_tokens`, default 1024) with one atomic conditional update; after the call it
+  settles the actual cost; on upstream failure it releases the reservation (ADR-0007).
+- `enforcement: warn` keeps the warnings and the log line but never returns 403.
+- `rate_limit.requests_per_minute` rejects bursts with 429 and `Retry-After`; per gateway
+  instance (ADR-0008).
+- A team not listed gets `defaults`; a listed team overrides only the keys it sets.
+- Unknown keys fail at startup. No policy file means no budgets and a startup warning.
+
+## Endpoints
+
+| Method | Path                     | Purpose                                                    |
+| ------ | ------------------------ | ---------------------------------------------------------- |
+| POST   | `/v1/chat/completions`   | OpenAI-compatible chat completion (non-streaming)          |
+| GET    | `/v1/models`             | Models the price book knows (and therefore can allow)      |
+| GET    | `/v1/finops/summary`     | Cost grouped by team / project / model, filterable         |
+| GET    | `/v1/finops/budgets`     | Month-to-date budget, rate limit and allow-list per team   |
+| GET    | `/metrics`               | Prometheus: requests by outcome, cost, tokens, latency, budget ratio |
+| GET    | `/healthz`               | Liveness, version, auth mode, price book and policy versions |
+| GET    | `/docs`                  | OpenAPI UI                                                 |
+
+## Configuration
+
+Environment variables (prefix `LFG_`; a `.env` file is read if present):
+
+| Variable                        | Default                   | Notes                                   |
+| ------------------------------- | ------------------------- | --------------------------------------- |
+| `LFG_PROVIDER`                  | `ollama`                  | `ollama` or `azure_openai`              |
+| `LFG_OLLAMA_BASE_URL`           | `http://localhost:11434`  |                                         |
+| `LFG_AZURE_OPENAI_ENDPOINT`     |                           | required for `azure_openai`             |
+| `LFG_AZURE_OPENAI_API_KEY`      |                           | required for `azure_openai`             |
+| `LFG_AZURE_OPENAI_API_VERSION`  | `2024-10-21`              |                                         |
+| `LFG_AZURE_OPENAI_DEPLOYMENTS`  | `{}`                      | JSON map model name -> deployment       |
+| `LFG_AUTH_MODE`                 | `api_key`                 | `api_key` or `headers` (dev only)       |
+| `LFG_KEYS_PATH`                 | `config/keys.yaml`        | hashes only                             |
+| `LFG_PRICING_PATH`              | `config/pricing.yaml`     |                                         |
+| `LFG_POLICIES_PATH`             | `config/policies.yaml`    | missing file = no policies              |
+| `LFG_DATABASE_URL`              | `sqlite:///./gateway.db`  | any SQLAlchemy URL                      |
+| `LFG_REQUEST_TIMEOUT_SECONDS`   | `120`                     |                                         |
+| `LFG_METRICS_ENABLED`           | `true`                    | serve `/metrics`                        |
+| `LFG_OTEL_ENABLED`              | `false`                   | needs `pip install ".[otel]"`; exporter via `OTEL_EXPORTER_OTLP_*` |
+| `LFG_OTEL_SERVICE_NAME`         | `llm-finops-gateway`      |                                         |
+
+### Tracing to Langfuse, Grafana or Azure Monitor
+
+```bash
+pip install "llm-finops-gateway[otel]"
+export LFG_OTEL_ENABLED=true
+export OTEL_EXPORTER_OTLP_ENDPOINT=https://cloud.langfuse.com/api/public/otel   # or your collector
+export OTEL_EXPORTER_OTLP_HEADERS="Authorization=Basic%20$(printf 'pk-lf-...:sk-lf-...' | base64)"
+```
+
+Every request span carries `finops.team`, `finops.project`, `finops.use_case`, `finops.model`,
+`finops.key_id`, `finops.cost_usd`, `finops.input_tokens`, `finops.output_tokens`,
+`finops.request_id` and, when rejected, `finops.policy_violation`.
+
+## Docker
+
+```bash
+docker compose up --build          # gateway + Ollama
+docker build -t llm-finops-gateway . && docker run --env-file .env -p 8080:8080 llm-finops-gateway
+```
+
+## Development
+
+```bash
+pre-commit install
+ruff check . && ruff format .
+mypy src tests
+pytest -q
+```
+
+CI runs the same steps on 3.11 and 3.12, plus `pip-audit` and a Docker build.
+Architecture notes: [docs/architecture.md](docs/architecture.md). Operations:
+[docs/deployment.md](docs/deployment.md). Manual test plan with the latest results:
+[docs/testing-plan.md](docs/testing-plan.md). Maintainers: [docs/first-publish.md](docs/first-publish.md).
+
+## Roadmap
+
+- **Next**: evaluation replay and regression scoring ([ADR-0009](docs/adr/0009-evaluation-replay.md),
+  design proposed); generic OpenAI-compatible provider (vLLM, TGI, LocalAI); OIDC attribution
+  (Keycloak, Entra ID) alongside team keys.
+- **Then**: streaming with cost settled on the final usage chunk; price book sync from the
+  Azure Retail Prices API with per-region prices; amortised and shared-pool pricing for
+  self-hosted models with token budgets; `ledger reconcile` CLI; managed identity for Azure OpenAI.
+- **Later**: PII policy (Presidio); shared rate limits for multi-replica deployments;
+  Terraform module for Azure Container Apps + Key Vault + PostgreSQL; Grafana dashboard.
+
+## Contributing
+
+Contributions are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md), the
+[Code of Conduct](CODE_OF_CONDUCT.md) and the [CLA](CLA.md) first. Project decision-making is
+described in [GOVERNANCE.md](GOVERNANCE.md).
+
+## Security
+
+Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
+
+## License
+
+Apache License 2.0. See [LICENSE](LICENSE).
