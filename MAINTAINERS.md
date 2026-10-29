@@ -4,7 +4,7 @@
 | ------------- | ----------------- | --------------------------- | -------- |
 | Andras Kelle  | @andrasKelle  | Project lead, maintainer    | 2026-11  |
 
-Contact for CLA, security and code of conduct matters: kelle.andras@alerant.hu.
+Contact for CLA, security and code of conduct matters: kelleandras@gmail.com.
 
 ## Emeritus
 
