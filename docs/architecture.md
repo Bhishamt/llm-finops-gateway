@@ -102,7 +102,6 @@ with the `LFG_*` variables set and `LFG_DATABASE_URL` pointing at a persistent d
 | --------------------------- | ------------------------------------------------------------ |
 | Evaluation replay (ADR-0009)| Opt-in sampled capture; `eval run` replays through the gateway and scores quality + cost |
 | OIDC attribution            | Third branch in `resolve_attribution`: JWT from Keycloak or Entra, team from a claim |
-| Streaming                   | Provider yields chunks; settle on the final usage chunk      |
 | PII policy                  | Additional check inside step 2, same policy file             |
 | Shared rate limits          | Token bucket row in the database or Redis, replacing the in-memory window |
 | JWT attribution (later)     | A third branch in `resolve_attribution`, same `Attribution` value |

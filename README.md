@@ -212,6 +212,17 @@ HTTP 403
               "budget": { "level": "block", "used_pct": "99.8", "remaining_usd": "0.90", "...": "..." } } }
 ```
 
+### Streaming
+
+`stream: true` returns server-sent events in the OpenAI chunk format, so `client.chat.completions.create(..., stream=True)`
+works unchanged. Policy checks and the budget reservation run before the first byte. The cost
+is known only when the provider sends its final usage, so it travels in the last event instead
+of a header: a chunk with empty `choices`, the `usage` object and the full `x_finops` block,
+then `data: [DONE]`. `X-FinOps-Request-Id` is set as a header. If the provider ends the stream
+without usage, the call is billed at the reservation estimate and the final event carries
+`usage_estimated: true`; if the upstream fails mid-stream, the reservation is released, nothing
+is recorded and the client receives one `data: {"error": ...}` event (ADR-0012).
+
 Other rejections: `401 missing_api_key / invalid_api_key / api_key_expired / api_key_disabled`,
 `403 team_mismatch / project_not_allowed / model_not_allowed`, `429 rate_limited` with
 `Retry-After`, `422` unpriced model, `400` missing project, `429 upstream_rate_limited` when
@@ -262,7 +273,7 @@ teams:
 
 | Method | Path                     | Purpose                                                    |
 | ------ | ------------------------ | ---------------------------------------------------------- |
-| POST   | `/v1/chat/completions`   | OpenAI-compatible chat completion (non-streaming)          |
+| POST   | `/v1/chat/completions`   | OpenAI-compatible chat completion, `stream: true` supported |
 | GET    | `/v1/models`             | Models the price book knows, and which provider serves each |
 | GET    | `/v1/finops/summary`     | Cost grouped by team / project / model, filterable         |
 | GET    | `/v1/finops/budgets`     | Month-to-date budget, rate limit and allow-list per team   |
@@ -334,7 +345,7 @@ Architecture notes: [docs/architecture.md](docs/architecture.md). Operations:
 
 - **Next**: evaluation replay and regression scoring ([ADR-0009](docs/adr/0009-evaluation-replay.md),
   design proposed); OIDC attribution (Keycloak, Entra ID) alongside team keys.
-- **Then**: streaming with cost settled on the final usage chunk; price book sync from the
+- **Then**: price book sync from the
   Azure Retail Prices API with per-region prices; amortised and shared-pool pricing for
   self-hosted models with token budgets; `ledger reconcile` CLI; managed identity for Azure OpenAI.
 - **Later**: PII policy (Presidio); shared rate limits for multi-replica deployments;

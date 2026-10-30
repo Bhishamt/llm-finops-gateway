@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 from decimal import Decimal
 from pathlib import Path
+from typing import Any
 
 from fastapi.testclient import TestClient
 
@@ -68,9 +70,65 @@ def test_unknown_model_is_rejected_before_upstream_call(
     assert fake_provider.calls == []
 
 
-def test_streaming_not_supported(client: TestClient) -> None:
+def _events(text: str) -> list[Any]:
+    out: list[Any] = []
+    for block in text.strip().split("\n\n"):
+        assert block.startswith("data: "), block
+        payload = block[len("data: ") :]
+        out.append(payload if payload == "[DONE]" else json.loads(payload))
+    return out
+
+
+def test_streaming_emits_openai_chunks_and_settles_cost_in_final_event(
+    client: TestClient, fake_provider: FakeProvider, ledger: Ledger
+) -> None:
     r = client.post("/v1/chat/completions", json={**BODY, "stream": True}, headers=ATTR_HEADERS)
-    assert r.status_code == 400
+    assert r.status_code == 200, r.text
+    assert r.headers["content-type"].startswith("text/event-stream")
+    assert r.headers["X-FinOps-Request-Id"].startswith("gw-")
+    events = _events(r.text)
+    assert events[-1] == "[DONE]"
+    chunks = [e for e in events[:-1] if e["choices"]]
+    assert all(e["object"] == "chat.completion.chunk" for e in chunks)
+    assert "".join(c["choices"][0]["delta"].get("content", "") for c in chunks) == "hello from fake"
+    assert chunks[-1]["choices"][0]["finish_reason"] == "stop"
+    final = events[-2]
+    assert final["choices"] == []
+    assert final["usage"] == {"prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 150}
+    assert Decimal(final["x_finops"]["cost_usd"]) == Decimal("0.00075")
+    assert final["x_finops"]["team"] == "platform"
+    assert "usage_estimated" not in final
+    assert fake_provider.calls[0]["stream"] is True
+    rows = ledger.summary()
+    assert len(rows) == 1 and rows[0].calls == 1 and rows[0].cost_usd == Decimal("0.00075")
+
+
+def test_streaming_failure_emits_error_event_and_records_nothing(
+    client: TestClient, fake_provider: FakeProvider, ledger: Ledger
+) -> None:
+    fake_provider.fail_with = ProviderError("fake", "boom", status_code=503)
+    fake_provider.fail_mid_stream = True
+    r = client.post("/v1/chat/completions", json={**BODY, "stream": True}, headers=ATTR_HEADERS)
+    assert r.status_code == 200  # headers were already sent; the error travels in the stream
+    events = _events(r.text)
+    assert events[0]["choices"][0]["delta"]["content"] == "hello "
+    assert events[-2]["error"] == "upstream_error" and events[-2]["provider"] == "fake"
+    assert events[-1] == "[DONE]"
+    assert ledger.summary() == []
+
+
+def test_streaming_without_usage_bills_the_estimate(
+    client: TestClient, fake_provider: FakeProvider, ledger: Ledger
+) -> None:
+    fake_provider.stream_without_usage = True
+    body = {**BODY, "stream": True, "max_tokens": 10}
+    r = client.post("/v1/chat/completions", json=body, headers=ATTR_HEADERS)
+    final = _events(r.text)[-2]
+    assert final["usage_estimated"] is True
+    # "hi" -> 0 chars/4 + 8 per message = 8 input tokens; output bounded by max_tokens
+    assert final["usage"] == {"prompt_tokens": 8, "completion_tokens": 10, "total_tokens": 18}
+    rows = ledger.summary()
+    assert rows[0].input_tokens == 8 and rows[0].output_tokens == 10
 
 
 def test_generation_params_are_forwarded(client: TestClient, fake_provider: FakeProvider) -> None:

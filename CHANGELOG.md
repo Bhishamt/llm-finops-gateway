@@ -23,6 +23,12 @@ is called out here.
   temperature; adapters accept `max_completion_tokens`. `usage.completion_tokens_details.reasoning_tokens`
   is passed through when the provider reports it.
 
+- Streaming: `stream: true` returns OpenAI-format server-sent events; the cost is settled
+  from the provider's final usage chunk and delivered in the last event with the `x_finops`
+  block. Streams that end without usage are billed at the reservation estimate
+  (`usage_estimated: true`); mid-stream upstream failures release the reservation and emit one
+  error event (ADR-0012). All adapters implement `stream()`.
+
 ### Changed
 - An upstream 429 is returned as `429 upstream_rate_limited` with the provider's `Retry-After`
   instead of `502 upstream_error`; the reservation is still released and nothing is recorded.
