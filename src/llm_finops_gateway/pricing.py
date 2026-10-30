@@ -88,6 +88,12 @@ class PriceBook:
     def has(self, model: str) -> bool:
         return model in self._prices
 
+    def price(self, model: str) -> ModelPrice:
+        try:
+            return self._prices[model]
+        except KeyError as exc:
+            raise UnknownModelError(model) from exc
+
     def is_reasoning(self, model: str) -> bool:
         """True for rows flagged ``reasoning: true`` (gpt-5, o-series): the upstream takes
         ``max_completion_tokens`` instead of ``max_tokens`` and only the default temperature."""

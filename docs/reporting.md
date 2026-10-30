@@ -29,8 +29,13 @@ it in an HttpOnly session cookie; `/finops/logout` clears it. The page shows:
 - the chargeback table (team, project, model, calls, tokens, cost) and the total;
 - price book version and currency, policy version, configured providers, gateway version.
 
-It refreshes every minute and needs no JavaScript, so it works behind any reverse proxy and
-in a locked-down browser.
+The default view is server-rendered; a few hundred lines of inline JavaScript (no build step,
+no external files) add: sorting on any column, a text filter per table, a team selector (all
+teams or any subset, the total follows), a display currency switch (`LFG_REPORT_RATES`, for
+example `{"EUR": 0.88}`; display only, the ledger stays in the book's currency), and the
+policy and price book views behind their version links: the effective policy per team with
+the defaults row, the raw `policies.yaml`, and prices per 1M tokens. Selections are kept in
+the browser's local storage.
 
 ## Spreadsheets and Power BI
 

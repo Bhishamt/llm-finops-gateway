@@ -60,6 +60,8 @@ from .providers.ollama import OllamaProvider
 from .providers.openai_compat import OpenAICompatProvider
 from .report import (
     COOKIE,
+    PolicyRow,
+    PriceRow,
     ReportContext,
     ReportScope,
     login_error,
@@ -687,6 +689,46 @@ def create_app(
             raise
         team_filter = scope.narrow(team)
         summary = cost_summary(team_filter, None)
+        budgets = budget_rows(team_filter)
+        teams = [b.team for b in budgets]
+
+        def policy_row(name: str, label: str) -> PolicyRow:
+            eff = policies.resolve(name)
+            b = eff.budget
+            return PolicyRow(
+                team=label,
+                allowed_models=list(eff.allowed_models),
+                monthly=b.monthly_usd if b else None,
+                warn_pct=money(Decimal(str(b.warn_at)) * 100) if b else None,
+                block_pct=money(Decimal(str(b.block_at)) * 100) if b else None,
+                enforcement=b.enforcement if b else None,
+                reserve_output_tokens=b.reserve_output_tokens if b else None,
+                requests_per_minute=eff.rate_limit.requests_per_minute if eff.rate_limit else None,
+            )
+
+        policy_rows = [policy_row("__defaults__", "(defaults)")] + [policy_row(t, t) for t in teams]
+        # The raw file names every team: only the all-teams scope may see it.
+        policy_yaml = (
+            settings.policies_path.read_text(encoding="utf-8")
+            if scope.team is None and settings.policies_path.exists()
+            else None
+        )
+        price_rows = []
+        for m in price_book.models():
+            if team_filter is not None and m not in policies.resolve(team_filter).allowed_models:
+                if "*" not in policies.resolve(team_filter).allowed_models:
+                    continue
+            p = price_book.price(m)
+            price_rows.append(
+                PriceRow(
+                    model=m,
+                    provider=p.provider,
+                    input=p.input_per_million,
+                    output=p.output_per_million,
+                    cached_input=p.cached_input_per_million,
+                    reasoning=p.reasoning,
+                )
+            )
         ctx = ReportContext(
             version=__version__,
             price_book_version=price_book.version,
@@ -696,9 +738,14 @@ def create_app(
             month_start=month_start().date().isoformat(),
             scope=scope,
             team_filter=team if scope.team is None else None,
-            budgets=budget_rows(team_filter),
+            budgets=budgets,
             rows=summary.rows,
             total=summary.total_cost_usd,
+            teams=teams,
+            rates={k.upper(): v for k, v in settings.report_rates.items()},
+            policy_rows=policy_rows,
+            policy_yaml=policy_yaml,
+            price_rows=price_rows,
         )
         return HTMLResponse(render_report(ctx))
 

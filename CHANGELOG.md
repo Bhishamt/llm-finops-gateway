@@ -65,6 +65,10 @@ is called out here.
   `budget_block`, `upstream_error` and `upstream_rate_limited` events as JSON with a Slack-ready
   `text`, once per team/provider per cooldown, delivered in the background (ADR-0017).
 
+- Report page: sortable columns, per-table text filter, team selector (all or a subset,
+  totals follow), display currency switch (`LFG_REPORT_RATES`, display only), and the
+  effective policy per team and the price book opened from their version links.
+
 ### Changed
 - An upstream 429 is returned as `429 upstream_rate_limited` with the provider's `Retry-After`
   instead of `502 upstream_error`; the reservation is still released and nothing is recorded.

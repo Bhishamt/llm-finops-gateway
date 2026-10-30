@@ -318,7 +318,10 @@ teams:
 
 Reports follow one access rule (ADR-0016): with `LFG_AUTH_MODE=api_key` a team key reads its
 own team, a key with `role: finops` (`keys new --role finops`) reads every team, and the HTML
-page asks for the key once and keeps it in a session cookie. How to feed Excel, Power BI or a
+page asks for the key once and keeps it in a session cookie. The page sorts on any column,
+filters rows, selects teams (all or a subset), switches the display currency
+(`LFG_REPORT_RATES`, display only; the ledger stays in the book's currency), and opens the
+effective policy per team and the price book from their version links. How to feed Excel, Power BI or a
 database-backed BI model is in [docs/reporting.md](docs/reporting.md).
 
 ## Configuration
@@ -344,6 +347,7 @@ Environment variables (prefix `LFG_`; a `.env` file is read if present):
 | `LFG_POLICIES_PATH`             | `config/policies.yaml`    | missing file = no policies              |
 | `LFG_DATABASE_URL`              | `sqlite:///./gateway.db`  | any SQLAlchemy URL                      |
 | `LFG_REQUEST_TIMEOUT_SECONDS`   | `120`                     |                                         |
+| `LFG_REPORT_RATES`              | `{}`                      | display currencies on `/finops` as units per 1 book unit, e.g. `{"EUR": 0.88}` |
 | `LFG_ALERT_WEBHOOK_URL`         |                           | Slack/Teams incoming webhook or any JSON endpoint; empty = off |
 | `LFG_ALERT_COOLDOWN_SECONDS`    | `3600`                    | same event per team/provider at most this often |
 | `LFG_METRICS_ENABLED`           | `true`                    | serve `/metrics`                        |

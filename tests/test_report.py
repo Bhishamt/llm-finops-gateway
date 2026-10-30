@@ -52,6 +52,7 @@ def _app(
         pricing_path=pricing_path,
         keys_path=keys,
         database_url="sqlite:///:memory:",
+        report_rates={"EUR": 0.88},
     )
     app = create_app(
         settings,
@@ -85,8 +86,29 @@ def keyed_client(
 def test_html_report_lists_budgets_and_chargeback(open_client: TestClient) -> None:
     r = open_client.get("/finops")
     assert r.status_code == 200 and r.headers["content-type"].startswith("text/html")
-    assert "platform" in r.text and "research" in r.text and "0.75" in r.text
-    assert "all teams" in r.text and "price book test-1" in r.text
+    assert "platform" in r.text and "research" in r.text and 'data-amt="0.75"' in r.text
+    assert "all teams" in r.text and ">test-1</a>" in r.text
+
+
+def test_html_report_has_selectors_policy_and_price_views(open_client: TestClient) -> None:
+    text = open_client.get("/finops").text
+    # team selector: one checkbox per team plus "all"
+    assert 'id="team-all"' in text
+    assert 'class="team" value="platform"' in text and 'class="team" value="research"' in text
+    # currency selector: the book currency and the configured display currencies
+    assert '<option value="USD">USD</option>' in text and '<option value="EUR">EUR</option>' in text
+    assert '"EUR": 0.88' in text
+    # policy view: defaults row and the raw file; price book view with the priced model
+    assert '<details id="policy">' in text and "(defaults)" in text
+    assert '<details id="pricebook">' in text and "<td>priced</td>" in text
+    assert 'data-amt="1.25"' in text  # cached_input price of "priced"
+    # sortable headers and per-table filters
+    assert 'class="sortable" id="chargeback"' in text and 'data-table="chargeback"' in text
+
+
+def test_team_key_sees_only_its_own_team_in_selectors(keyed_client: TestClient) -> None:
+    text = keyed_client.get("/finops", headers={"Authorization": f"Bearer {RAW_PLATFORM}"}).text
+    assert 'class="team" value="platform"' in text and 'value="research"' not in text
 
 
 def test_csv_summary(open_client: TestClient) -> None:
