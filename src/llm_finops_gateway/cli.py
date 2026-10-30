@@ -4,6 +4,7 @@ llm-finops-gateway serve --host 0.0.0.0 --port 8080
 llm-finops-gateway keys new --team platform --id platform-copilot [--project copilot ...]
 llm-finops-gateway keys hash lfg_...
 llm-finops-gateway keys check config/keys.yaml
+llm-finops-gateway pricing sync --region swedencentral [--deployment global] [--write]
 """
 
 from __future__ import annotations
@@ -60,6 +61,32 @@ def _keys_check(args: argparse.Namespace) -> None:
     print(f"{args.path}: {len(ring)} key(s), version {ring.version}")
 
 
+def _pricing_sync(args: argparse.Namespace) -> None:
+    from .pricing_sync import DEPLOYMENTS, format_table, sync
+
+    if args.deployment not in DEPLOYMENTS:
+        print(f"--deployment must be one of {', '.join(DEPLOYMENTS)}", file=sys.stderr)
+        sys.exit(2)
+    results, changes = sync(Path(args.path), args.region, args.deployment, write=args.write)
+    print(format_table(results))
+    drift = [r for r in results if r.status != "ok"]
+    if args.write:
+        print(f"\n{args.path}: {changes} value(s) rewritten" if changes else "\nnothing to write")
+        unresolved = [r for r in drift if r.status in ("unmatched", "ambiguous")]
+        if unresolved:
+            print(f"{len(unresolved)} field(s) need attention (see table)", file=sys.stderr)
+            sys.exit(1)
+        return
+    if drift:
+        print(
+            f"{len(drift)} field(s) differ from the {args.region} retail list; "
+            "re-run with --write to update the file",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    print(f"\n{args.path} matches the {args.region} retail list ({args.deployment})")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="llm-finops-gateway")
     sub = parser.add_subparsers(dest="command")
@@ -87,6 +114,21 @@ def build_parser() -> argparse.ArgumentParser:
     c = ksub.add_parser("check", help="validate a key file")
     c.add_argument("path", nargs="?", default="config/keys.yaml")
     c.set_defaults(func=_keys_check)
+
+    pricing = sub.add_parser("pricing", help="price book tools")
+    psub = pricing.add_subparsers(dest="pricing_command", required=True)
+    s = psub.add_parser(
+        "sync", help="compare the price book with the Azure Retail Prices API (ADR-0013)"
+    )
+    s.add_argument("--region", required=True, help="ARM region name, e.g. swedencentral")
+    s.add_argument(
+        "--deployment",
+        default="global",
+        help="deployment type for rows without `sku`: global (default), regional, datazone",
+    )
+    s.add_argument("--path", default="config/pricing.yaml")
+    s.add_argument("--write", action="store_true", help="rewrite differing prices in place")
+    s.set_defaults(func=_pricing_sync)
 
     return parser
 

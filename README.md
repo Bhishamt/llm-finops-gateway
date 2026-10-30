@@ -212,6 +212,21 @@ HTTP 403
               "budget": { "level": "block", "used_pct": "99.8", "remaining_usd": "0.90", "...": "..." } } }
 ```
 
+### Keeping the price book honest: `pricing sync`
+
+```bash
+llm-finops-gateway pricing sync --region swedencentral            # report, exit 1 on drift
+llm-finops-gateway pricing sync --region swedencentral --write    # rewrite numbers, bump version
+```
+
+The command downloads the region's meters from the public Azure Retail Prices API, matches the
+rows marked `provider: azure_openai` by model, token kind and deployment type, and prints one
+line per price: `ok`, `differs`, `missing`, `unmatched` or `ambiguous`. Azure bills the same
+model differently per deployment type (regional Standard is about 21 % above Global Standard)
+and sometimes per model version; a row can say `sku: regional` or `version: 2024-11-20` to pin
+those. Nothing is looked up at request time: the price book stays a reviewed file, and
+`--write` produces the diff for a pull request (ADR-0013).
+
 ### Streaming
 
 `stream: true` returns server-sent events in the OpenAI chunk format, so `client.chat.completions.create(..., stream=True)`
@@ -345,8 +360,7 @@ Architecture notes: [docs/architecture.md](docs/architecture.md). Operations:
 
 - **Next**: evaluation replay and regression scoring ([ADR-0009](docs/adr/0009-evaluation-replay.md),
   design proposed); OIDC attribution (Keycloak, Entra ID) alongside team keys.
-- **Then**: price book sync from the
-  Azure Retail Prices API with per-region prices; amortised and shared-pool pricing for
+- **Then**: amortised and shared-pool pricing for
   self-hosted models with token budgets; `ledger reconcile` CLI; managed identity for Azure OpenAI.
 - **Later**: PII policy (Presidio); shared rate limits for multi-replica deployments;
   Terraform module for Azure Container Apps + Key Vault + PostgreSQL; Grafana dashboard.

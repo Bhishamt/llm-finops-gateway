@@ -29,6 +29,11 @@ is called out here.
   (`usage_estimated: true`); mid-stream upstream failures release the reservation and emit one
   error event (ADR-0012). All adapters implement `stream()`.
 
+- `llm-finops-gateway pricing sync --region <region> [--deployment ...] [--write]`: compares
+  the `azure_openai` rows of the price book with the Azure Retail Prices API per deployment
+  type and model version, exits non-zero on drift, rewrites the numbers in place with
+  `--write` (ADR-0013). Price book rows accept `sku:` and `version:` hints.
+
 ### Changed
 - An upstream 429 is returned as `429 upstream_rate_limited` with the provider's `Retry-After`
   instead of `502 upstream_error`; the reservation is still released and nothing is recorded.
