@@ -412,6 +412,7 @@ def create_app(
         def envelope(cost: Decimal, status: BudgetStatus | None) -> FinOpsEnvelope:
             return FinOpsEnvelope(
                 cost_usd=money(cost),
+                currency=book.currency,
                 price_book_version=book.version,
                 team=attr.team,
                 project=attr.project,
@@ -553,6 +554,7 @@ def create_app(
         )
         _budget_headers(response, status, decision.warnings)
         response.headers["X-FinOps-Cost-USD"] = money(cost)
+        response.headers["X-FinOps-Currency"] = book.currency
         response.headers["X-FinOps-Request-Id"] = request_id
 
         return ChatResponse(

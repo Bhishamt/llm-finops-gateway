@@ -181,7 +181,7 @@ Standard OpenAI shape plus an `x_finops` block, and `X-FinOps-*` headers:
   "choices": [{ "index": 0, "message": { "role": "assistant", "content": "Hi!" }, "finish_reason": "stop" }],
   "usage": { "prompt_tokens": 12, "completion_tokens": 3, "total_tokens": 15 },
   "x_finops": {
-    "cost_usd": "0.0000036", "price_book_version": "2026-11-01",
+    "cost_usd": "0.0000036", "currency": "USD", "price_book_version": "2026-11-01",
     "team": "platform", "project": "demo", "use_case": "smoke-test", "provider": "azure_openai",
     "key_id": "platform-copilot",
     "policy": {
@@ -197,6 +197,7 @@ Standard OpenAI shape plus an `x_finops` block, and `X-FinOps-*` headers:
 
 ```
 X-FinOps-Cost-USD: 0.0000036
+X-FinOps-Currency: USD
 X-FinOps-Budget-Limit-USD: 500
 X-FinOps-Budget-Spent-USD: 412.10
 X-FinOps-Budget-Used-Pct: 82.4
@@ -226,7 +227,9 @@ llm-finops-gateway pricing sync --region swedencentral --write    # rewrite numb
 
 The command downloads the region's meters from the public Azure Retail Prices API, matches the
 rows marked `provider: azure_openai` by model, token kind and deployment type, and prints one
-line per price: `ok`, `differs`, `missing`, `unmatched` or `ambiguous`. Azure bills the same
+line per price: `ok`, `differs`, `missing`, `unmatched` or `ambiguous`. `--currency EUR` asks
+for the list in euros (Microsoft's own conversion, the one on the invoice) and, with `--write`,
+sets the book's `currency:` so every ledger row, header and report carries the same unit. Azure bills the same
 model differently per deployment type (regional Standard is about 21 % above Global Standard)
 and sometimes per model version; a row can say `sku: regional` or `version: 2024-11-20` to pin
 those. Nothing is looked up at request time: the price book stays a reviewed file, and

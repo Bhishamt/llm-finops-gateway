@@ -44,6 +44,7 @@ def test_version_and_models(price_book: PriceBook) -> None:
         "version: 1\ncurrency: USD\n",  # missing models
         "version: 1\ncurrency: USD\nmodels: [a, b]\n",  # models not a mapping
         "version: 1\ncurrency: USD\nmodels:\n  m: {input: 1}\n",  # missing output
+        "version: 1\ncurrency: dollars\nmodels:\n  m: {input: 1, output: 1}\n",  # bad currency
         "- not\n- a\n- mapping\n",
     ],
 )

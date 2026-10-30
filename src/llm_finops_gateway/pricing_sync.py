@@ -158,8 +158,11 @@ def parse_meter(item: dict[str, Any]) -> Meter | None:
     )
 
 
-def fetch_retail_items(region: str, client: httpx.Client | None = None) -> list[dict[str, Any]]:
-    """All Foundry Models price items for a region (the API pages by 1000)."""
+def fetch_retail_items(
+    region: str, currency: str = "USD", client: httpx.Client | None = None
+) -> list[dict[str, Any]]:
+    """All Foundry Models price items for a region, priced in ``currency`` (the API pages by
+    1000 and converts with Microsoft's own exchange rates)."""
     own = client is None
     client = client or httpx.Client(timeout=60.0)
     items: list[dict[str, Any]] = []
@@ -167,6 +170,7 @@ def fetch_retail_items(region: str, client: httpx.Client | None = None) -> list[
         url: str | None = RETAIL_URL
         params: dict[str, str] | None = {
             "api-version": API_VERSION,
+            "currencyCode": f"'{currency}'",
             "$filter": f"armRegionName eq '{region}' and serviceName eq 'Foundry Models'",
         }
         while url:
@@ -259,6 +263,11 @@ def apply(text: str, results: list[RowResult], today: str | None = None) -> tupl
     the row layout; bump ``version`` when anything changed. Returns (text, changes)."""
     changes = 0
     for r in results:
+        if r.model == BOOK_CURRENCY_ROW and r.status == "differs":
+            code = r.note.split("->")[-1].strip()
+            text, n = re.subn(r"^(currency:\s*)\S+", rf"\g<1>{code}", text, count=1, flags=re.M)
+            changes += n
+            continue
         if r.status not in ("differs", "missing") or r.retail is None:
             continue
         row = re.compile(rf'^(\s*"?{re.escape(r.model)}"?:\s*\{{)(.*)(\}}\s*)$', re.M)
@@ -290,24 +299,41 @@ def format_table(results: list[RowResult]) -> str:
     return "\n".join(lines)
 
 
+BOOK_CURRENCY_ROW = "(price book)"
+
+
 def sync(
     path: Path,
     region: str,
     deployment: str = "global",
     write: bool = False,
     items: list[dict[str, Any]] | None = None,
+    currency: str = "USD",
 ) -> tuple[list[RowResult], int]:
-    """Compare ``path`` with the retail prices of ``region``; with ``write`` update it.
-    Returns the per-field results and the number of rewritten values."""
+    """Compare ``path`` with the retail prices of ``region`` in ``currency``; with ``write``
+    update it (numbers, and the book's ``currency`` line when it differs). Returns the
+    per-field results and the number of rewritten values."""
     if deployment not in DEPLOYMENTS:
         raise ValueError(f"deployment must be one of {DEPLOYMENTS}")
-    items = fetch_retail_items(region) if items is None else items
+    currency = currency.upper()
+    items = fetch_retail_items(region, currency) if items is None else items
     meters = [m for m in (parse_meter(i) for i in items) if m is not None]
     text = path.read_text(encoding="utf-8")
     raw: Any = yaml.safe_load(text)
     if not isinstance(raw, dict):
         raise ValueError(f"{path}: top level must be a mapping")
-    results = compare(raw, meters, deployment)
+    book_currency = str(raw.get("currency", "USD")).upper()
+    results = [
+        RowResult(
+            BOOK_CURRENCY_ROW,
+            "currency",
+            None,
+            None,
+            "ok" if book_currency == currency else "differs",
+            f"{book_currency} -> {currency}",
+        )
+    ]
+    results += compare(raw, meters, deployment)
     changes = 0
     if write:
         text, changes = apply(text, results)

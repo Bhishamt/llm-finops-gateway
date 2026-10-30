@@ -7,6 +7,7 @@ to prevent.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
@@ -63,6 +64,9 @@ class PriceBook:
                 raise PriceBookError(f"{path}: missing required key '{key}'")
         if not isinstance(raw["models"], dict):
             raise PriceBookError(f"{path}: 'models' must be a mapping")
+        currency = str(raw["currency"])
+        if not re.fullmatch(r"[A-Z]{3}", currency):
+            raise PriceBookError(f"{path}: 'currency' must be a 3-letter code like USD or EUR")
         prices: dict[str, ModelPrice] = {}
         for name, spec in raw["models"].items():
             if not isinstance(spec, dict) or "input" not in spec or "output" not in spec:
@@ -76,7 +80,7 @@ class PriceBook:
                 provider=None if provider is None else str(provider),
                 reasoning=bool(spec.get("reasoning", False)),
             )
-        return cls(prices, version=str(raw["version"]), currency=str(raw["currency"]))
+        return cls(prices, version=str(raw["version"]), currency=currency)
 
     def models(self) -> list[str]:
         return sorted(self._prices)
