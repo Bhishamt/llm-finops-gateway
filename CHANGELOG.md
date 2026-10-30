@@ -73,6 +73,9 @@ is called out here.
   `llm-finops-gateway alerts test` sends one sample event. Report page: the team selector is a
   dropdown with checkboxes; sort order survives a reload.
 
+- Screenshots of the report page and the Grafana dashboard in the README; the local Grafana
+  allows anonymous viewing; stat panels show 0 instead of "No data" when a counter is empty.
+
 ### Changed
 - An upstream 429 is returned as `429 upstream_rate_limited` with the provider's `Retry-After`
   instead of `502 upstream_error`; the reservation is still released and nothing is recorded.

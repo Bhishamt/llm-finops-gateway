@@ -316,6 +316,8 @@ teams:
 | GET    | `/healthz`               | Liveness, version, auth mode, price book and policy versions |
 | GET    | `/docs`                  | OpenAPI UI                                                 |
 
+![The /finops report page](docs/images/finops-report.png)
+
 Reports follow one access rule (ADR-0016): with `LFG_AUTH_MODE=api_key` a team key reads its
 own team, a key with `role: finops` (`keys new --role finops`) reads every team, and the HTML
 page asks for the key once and keeps it in a session cookie. The page sorts on any column,
@@ -396,8 +398,10 @@ locally against a gateway on port 8080:
 
 ```bash
 docker compose -f docker-compose.observability.yml up -d   # Prometheus + Grafana, dashboard provisioned
-open http://localhost:3000                                 # admin / admin
+open http://localhost:3000                                 # viewer without login; admin / admin to edit
 ```
+
+![The Grafana dashboard](docs/images/grafana-dashboard.png)
 
 Where each view lives in Azure: the report page is served by the gateway itself, so it is the
 Container App's URL plus `/finops`, behind the gateway's key auth and whatever sits in front
