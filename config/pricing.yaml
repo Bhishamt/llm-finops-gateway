@@ -10,9 +10,13 @@ models:
   # `provider` (optional) names the adapter that serves the model: ollama, azure_openai or
   # openai_compat (ADR-0011). Rows without it go to LFG_PROVIDER. A provider that is not
   # configured falls back to the default with a startup warning.
+  # `llm-finops-gateway pricing sync --region <region>` checks the azure_openai rows against the
+  # Azure Retail Prices API (ADR-0013). `sku: regional|datazone` marks a row whose deployment
+  # is not Global Standard; `version: YYYY-MM-DD` picks the model version when Azure prices
+  # several differently (gpt-4o).
   # Azure OpenAI deployments (map model -> deployment with LFG_AZURE_OPENAI_DEPLOYMENTS).
   # Global Standard list prices; regional and Data Zone deployments can differ.
-  gpt-4o: { input: 2.50, output: 10.00, cached_input: 1.25, provider: azure_openai }
+  gpt-4o: { input: 2.50, output: 10.00, cached_input: 1.25, provider: azure_openai, version: 2024-11-20 }
   gpt-4o-mini: { input: 0.15, output: 0.60, cached_input: 0.075, provider: azure_openai }
   gpt-4.1: { input: 2.00, output: 8.00, cached_input: 0.50, provider: azure_openai }
   gpt-4.1-mini: { input: 0.40, output: 1.60, cached_input: 0.10, provider: azure_openai }
