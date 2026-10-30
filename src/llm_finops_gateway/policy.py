@@ -15,6 +15,7 @@ attribution dimensions. Supported policy types:
 
 from __future__ import annotations
 
+import json
 import logging
 import threading
 import time
@@ -177,24 +178,44 @@ def month_start(now: datetime | None = None) -> datetime:
     return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
 
+def _message_chars(message: dict[str, Any]) -> int:
+    """Characters that reach the model: text content or text parts, plus tool-call payloads."""
+    content = message.get("content")
+    chars = 0
+    if isinstance(content, str):
+        chars += len(content)
+    elif isinstance(content, list):
+        chars += sum(len(str(p.get("text", ""))) for p in content if isinstance(p, dict))
+    if message.get("tool_calls"):
+        chars += len(json.dumps(message["tool_calls"]))
+    return chars
+
+
 def estimate_tokens(
-    messages: list[dict[str, str]], max_tokens: int | None, reserve_output_tokens: int
+    messages: list[dict[str, Any]],
+    max_tokens: int | None,
+    reserve_output_tokens: int,
+    extra_chars: int = 0,
 ) -> tuple[int, int]:
     """(input, output) token estimate without a tokenizer: prompt chars / 4 plus a per-message
-    overhead; output bounded by max_tokens or the policy's default."""
-    prompt_chars = sum(len(m.get("content", "")) for m in messages)
+    overhead and ``extra_chars`` (tool definitions); output bounded by max_tokens or the
+    policy's default."""
+    prompt_chars = sum(_message_chars(m) for m in messages) + extra_chars
     return prompt_chars // 4 + 8 * len(messages), max_tokens or reserve_output_tokens
 
 
 def estimate_cost(
     book: PriceBook,
     model: str,
-    messages: list[dict[str, str]],
+    messages: list[dict[str, Any]],
     max_tokens: int | None,
     reserve_output_tokens: int,
+    extra_chars: int = 0,
 ) -> Decimal:
     """Upper-ish bound of a call's cost for budget reservation."""
-    input_tokens, output_tokens = estimate_tokens(messages, max_tokens, reserve_output_tokens)
+    input_tokens, output_tokens = estimate_tokens(
+        messages, max_tokens, reserve_output_tokens, extra_chars
+    )
     return book.cost(model, input_tokens, output_tokens)
 
 

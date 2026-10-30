@@ -43,16 +43,18 @@ class OpenAICompatProvider:
     def _payload(
         self,
         model: str,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         temperature: float | None,
         max_tokens: int | None,
         max_completion_tokens: int | None,
         stream: bool,
+        extra: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "model": self.upstream_model_for(model),
             "messages": messages,
             "stream": stream,
+            **(extra or {}),
         }
         if stream:
             payload["stream_options"] = {"include_usage": True}
@@ -75,14 +77,21 @@ class OpenAICompatProvider:
     async def chat(
         self,
         model: str,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         *,
         temperature: float | None = None,
         max_tokens: int | None = None,
         max_completion_tokens: int | None = None,
+        extra: dict[str, Any] | None = None,
     ) -> CompletionResult:
         payload = self._payload(
-            model, messages, temperature, max_tokens, max_completion_tokens, stream=False
+            model,
+            messages,
+            temperature,
+            max_tokens,
+            max_completion_tokens,
+            stream=False,
+            extra=extra,
         )
         try:
             resp = await self._client.post("/chat/completions", json=payload)
@@ -100,20 +109,28 @@ class OpenAICompatProvider:
             finish_reason=str(choice.get("finish_reason") or "stop"),
             cached_input_tokens=usage.cached_input_tokens,
             reasoning_tokens=usage.reasoning_tokens,
+            tool_calls=choice["message"].get("tool_calls") or None,
             raw=data,
         )
 
     async def stream(
         self,
         model: str,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         *,
         temperature: float | None = None,
         max_tokens: int | None = None,
         max_completion_tokens: int | None = None,
+        extra: dict[str, Any] | None = None,
     ) -> AsyncIterator[StreamChunk]:
         payload = self._payload(
-            model, messages, temperature, max_tokens, max_completion_tokens, stream=True
+            model,
+            messages,
+            temperature,
+            max_tokens,
+            max_completion_tokens,
+            stream=True,
+            extra=extra,
         )
         try:
             async with self._client.stream("POST", "/chat/completions", json=payload) as resp:

@@ -51,12 +51,13 @@ class AzureOpenAIProvider:
 
     @staticmethod
     def _payload(
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         temperature: float | None,
         max_tokens: int | None,
         max_completion_tokens: int | None,
+        extra: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        payload: dict[str, Any] = {"messages": messages}
+        payload: dict[str, Any] = {"messages": messages, **(extra or {})}
         if temperature is not None:
             payload["temperature"] = temperature
         if max_tokens is not None:
@@ -79,13 +80,14 @@ class AzureOpenAIProvider:
     async def chat(
         self,
         model: str,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         *,
         temperature: float | None = None,
         max_tokens: int | None = None,
         max_completion_tokens: int | None = None,
+        extra: dict[str, Any] | None = None,
     ) -> CompletionResult:
-        payload = self._payload(messages, temperature, max_tokens, max_completion_tokens)
+        payload = self._payload(messages, temperature, max_tokens, max_completion_tokens, extra)
         try:
             resp = await self._client.post(
                 self._url(model),
@@ -107,19 +109,21 @@ class AzureOpenAIProvider:
             finish_reason=str(choice.get("finish_reason") or "stop"),
             cached_input_tokens=usage.cached_input_tokens,
             reasoning_tokens=usage.reasoning_tokens,
+            tool_calls=choice["message"].get("tool_calls") or None,
             raw=data,
         )
 
     async def stream(
         self,
         model: str,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         *,
         temperature: float | None = None,
         max_tokens: int | None = None,
         max_completion_tokens: int | None = None,
+        extra: dict[str, Any] | None = None,
     ) -> AsyncIterator[StreamChunk]:
-        payload = self._payload(messages, temperature, max_tokens, max_completion_tokens)
+        payload = self._payload(messages, temperature, max_tokens, max_completion_tokens, extra)
         payload["stream"] = True
         payload["stream_options"] = {"include_usage": True}
         try:

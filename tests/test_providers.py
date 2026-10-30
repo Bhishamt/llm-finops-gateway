@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from typing import Any
 
 import httpx
 import pytest
@@ -372,3 +373,92 @@ def test_azure_openai_requires_exactly_one_credential() -> None:
         AzureOpenAIProvider(
             endpoint="https://res.openai.azure.com", api_key="k", token_provider=FakeTokenProvider()
         )
+
+
+@respx.mock
+async def test_azure_openai_passes_extra_fields_and_returns_tool_calls() -> None:
+    call = {"id": "c1", "type": "function", "function": {"name": "f", "arguments": "{}"}}
+    route = respx.post("https://res.openai.azure.com/openai/deployments/m/chat/completions").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "message": {"role": "assistant", "content": None, "tool_calls": [call]},
+                        "finish_reason": "tool_calls",
+                    }
+                ],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1},
+            },
+        )
+    )
+    provider = AzureOpenAIProvider(endpoint="https://res.openai.azure.com", api_key="k")
+    result = await provider.chat(
+        "m", MESSAGES, extra={"tools": [{"type": "function"}], "top_p": 0.5, "seed": 1}
+    )
+    await provider.aclose()
+    payload = json.loads(route.calls.last.request.content)
+    assert payload["tools"] == [{"type": "function"}] and payload["top_p"] == 0.5
+    assert (result.content, result.finish_reason, result.tool_calls) == ("", "tool_calls", [call])
+
+
+@respx.mock
+async def test_ollama_translates_tools_and_tool_calls_both_ways() -> None:
+    route = respx.post("http://ollama.test/api/chat").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "message": {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [
+                        {"function": {"name": "get_weather", "arguments": {"city": "Budapest"}}}
+                    ],
+                },
+                "done": True,
+                "done_reason": "stop",
+                "prompt_eval_count": 5,
+                "eval_count": 3,
+            },
+        )
+    )
+    provider = OllamaProvider(base_url="http://ollama.test")
+    history: list[dict[str, Any]] = [
+        {"role": "user", "content": "weather?"},
+        {
+            "role": "assistant",
+            "tool_calls": [
+                {
+                    "id": "call_1",
+                    "type": "function",
+                    "function": {"name": "get_weather", "arguments": '{"city": "Pecs"}'},
+                }
+            ],
+        },
+    ]
+    result = await provider.chat(
+        "m",
+        history,
+        extra={
+            "tools": [{"type": "function"}],
+            "response_format": {"type": "json_object"},
+            "top_p": 0.3,
+            "stop": "END",
+            "tool_choice": "auto",
+            "user": "ignored",
+        },
+    )
+    await provider.aclose()
+    payload = json.loads(route.calls.last.request.content)
+    assert payload["tools"] == [{"type": "function"}] and payload["format"] == "json"
+    assert payload["options"] == {"top_p": 0.3, "stop": ["END"]}
+    assert payload["messages"][1]["tool_calls"][0]["function"]["arguments"] == {"city": "Pecs"}
+    assert "user" not in payload and "tool_choice" not in payload
+    assert result.finish_reason == "tool_calls"
+    assert result.tool_calls == [
+        {
+            "id": "call_0",
+            "type": "function",
+            "function": {"name": "get_weather", "arguments": '{"city": "Budapest"}'},
+        }
+    ]

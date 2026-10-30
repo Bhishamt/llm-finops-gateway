@@ -39,6 +39,7 @@ from .models import (
     PolicyEnvelope,
     PromptTokensDetails,
     TeamBudgetRow,
+    ToolCall,
     Usage,
 )
 from .policy import (
@@ -162,11 +163,18 @@ def _sse(event: dict[str, Any]) -> bytes:
 
 
 def _stream_chunk(
-    request_id: str, created: int, model: str, delta: str | None, finish_reason: str | None
+    request_id: str,
+    created: int,
+    model: str,
+    delta: str | None,
+    finish_reason: str | None,
+    tool_calls: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """One ``chat.completion.chunk`` in the OpenAI wire shape."""
     choice: dict[str, Any] = {"index": 0, "finish_reason": finish_reason}
     choice["delta"] = {"role": "assistant", "content": delta} if delta is not None else {}
+    if tool_calls:
+        choice["delta"]["tool_calls"] = tool_calls
     return {
         "id": request_id,
         "object": "chat.completion.chunk",
@@ -302,10 +310,14 @@ def create_app(
             raise HTTPException(status_code=422, detail=str(UnknownModelError(req.model)))
 
         # 2. Policy: allow-list, rate limit, atomic budget reservation (ADR-0005, 0007).
-        messages = [m.model_dump() for m in req.messages]
+        messages = [m.model_dump(exclude_none=True) for m in req.messages]
+        extra = req.passthrough()
         policy = engine.resolve(attr.team)
         reserve_output = policy.budget.reserve_output_tokens if policy.budget else 1
-        estimate = estimate_cost(book, req.model, messages, req.max_tokens, reserve_output)
+        tool_chars = len(json.dumps(req.tools)) if req.tools else 0
+        estimate = estimate_cost(
+            book, req.model, messages, req.output_limit, reserve_output, tool_chars
+        )
         decision = engine.check(attr, req.model, estimate)
         if not decision.allowed:
             metrics.requests.labels(attr.team, req.model, decision.violation or "blocked").inc()
@@ -334,7 +346,8 @@ def create_app(
         gen_params: dict[str, Any] = {
             "temperature": None if reasoning else req.temperature,
             "max_tokens": None if reasoning else req.max_tokens,
-            "max_completion_tokens": req.max_tokens if reasoning else None,
+            "max_completion_tokens": req.output_limit if reasoning else req.max_completion_tokens,
+            "extra": extra,
         }
         request_id = f"gw-{uuid.uuid4().hex}"
 
@@ -429,10 +442,16 @@ def create_app(
                 started = time.perf_counter()
                 try:
                     async for part in provider.stream(req.model, messages, **gen_params):
-                        if part.delta:
-                            yield _sse(
-                                _stream_chunk(request_id, created, req.model, part.delta, None)
+                        if part.delta or part.tool_calls:
+                            chunk = _stream_chunk(
+                                request_id,
+                                created,
+                                req.model,
+                                part.delta if part.delta else None,
+                                None,
+                                part.tool_calls,
                             )
+                            yield _sse(chunk)
                         if part.finish_reason:
                             finish = part.finish_reason
                         if part.usage is not None:
@@ -442,7 +461,9 @@ def create_app(
                     )
                     estimated = usage is None
                     if usage is None:
-                        est_in, est_out = estimate_tokens(messages, req.max_tokens, reserve_output)
+                        est_in, est_out = estimate_tokens(
+                            messages, req.output_limit, reserve_output, tool_chars
+                        )
                         usage = TokenUsage(input_tokens=est_in, output_tokens=est_out)
                         log.warning(
                             "stream from %s ended without usage request_id=%s team=%s model=%s; "
@@ -529,7 +550,15 @@ def create_app(
             model=req.model,
             choices=[
                 Choice(
-                    message=ChatMessage(role="assistant", content=result.content),
+                    message=ChatMessage(
+                        role="assistant",
+                        content=result.content if result.content or not result.tool_calls else None,
+                        tool_calls=(
+                            [ToolCall.model_validate(tc) for tc in result.tool_calls]
+                            if result.tool_calls
+                            else None
+                        ),
+                    ),
                     finish_reason=result.finish_reason,
                 )
             ],
