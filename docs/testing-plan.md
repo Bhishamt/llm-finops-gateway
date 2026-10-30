@@ -186,6 +186,7 @@ python demo/run_demo.py --mode live --url http://localhost:8080 --model gpt-4.1-
 | 4.3 | `GET /v1/finops/summary` | sums equal the report |
 | 4.4 | Wrong deployment mapping (`LFG_AZURE_OPENAI_DEPLOYMENTS={"gpt-4.1-mini":"nope"}`) | HTTP 502, `upstream_error`, provider `azure_openai`, no ledger row written |
 | 4.6 | Same resource through the v1 endpoint: `LFG_PROVIDER=openai_compat`, base URL `.../openai/v1` | HTTP 200, `x_finops.provider: openai_compat`, cost matches 4.2 |
+| 4.7 | Reasoning model (`gpt-5-mini` deployment, price book row `reasoning: true`) called with `temperature` and `max_tokens` the way OpenAI SDK clients do | HTTP 200 (Azure would reject raw `max_tokens` and a non-default temperature); `usage.completion_tokens_details.reasoning_tokens` present; a small `max_tokens` yields empty content with `finish_reason: length` |
 | 4.5 | Azure Cost Management, next day | the resource's token charges equal the gateway total to the cent (pay-as-you-go) |
 
 - [ ] 4.1 to 4.5 pass. Capture: 4.1 table with real dollars, 4.5 screenshot of Cost Management
@@ -223,7 +224,7 @@ docker compose down
 | 3b Team keys | pass | 2026-10-28 | 401 missing_api_key with `WWW-Authenticate`, 401 invalid_api_key, 200 with `key_id`, 403 team_mismatch |
 | 3c Rate limit | pass | 2026-10-28 | `403 403 403 429`, `Retry-After: 60`, log `reason=rate_limited rpm=3` |
 | 3d Tracing | pass | 2026-10-30 | Jaeger 2.5.0 via OTLP/HTTP on 4318; `POST /v1/chat/completions` spans carry `finops.team`, `finops.project`, `finops.use_case`, `finops.model`, `finops.cost_usd`, `finops.input_tokens`, `finops.output_tokens`, `finops.request_id`; `/healthz` not traced |
-| 4 Azure OpenAI | pass (4.1 to 4.4, 4.6) | 2026-10-30 | `gpt-4.1-mini-dev` in Sweden Central; 30-call run then an 800-call run (713 sent, 662 served, 0.0576 USD) with a policy copy that allows the model for every team; ledger total for the day 674 rows, 12,214 input and 33,448 output tokens, 0.0584024 USD; cost by hand matches to the last digit; 502 `DeploymentNotFound` with 0 ledger rows; v1 endpoint via `openai_compat` ok. 4.5 Cost Management pending (data lags 8 to 24 h) |
+| 4 Azure OpenAI | pass (4.1 to 4.4, 4.6) | 2026-10-30 | `gpt-4.1-mini-dev` in Sweden Central; 30-call run then an 800-call run (713 sent, 662 served, 0.0576 USD) with a policy copy that allows the model for every team; ledger total for the day 674 rows, 12,214 input and 33,448 output tokens, 0.0584024 USD; cost by hand matches to the last digit; 502 `DeploymentNotFound` with 0 ledger rows; v1 endpoint via `openai_compat` ok. 4.7 reasoning params on `gpt-5-mini-dev` (Global Standard) pass 2026-10-30: 200 with translated params, 60-token limit gave empty content and `length`, 400-token limit gave "Ready" with 74 completion tokens, cost 0.00015125 USD matches by hand. 4.5 Cost Management pending (data lags 8 to 24 h) |
 | 5 Docker | pass (image) | 2026-10-30 | image builds, runs as uid 10001, healthcheck `healthy`, live call through the container ok. `docker compose config` fails on Compose 2.23 (`env_file` long syntax needs 2.24+); compose with Ollama not brought up |
 | 6 Limitations | confirmed by tests | 2026-10-28 | estimate-based rejection and per-instance rate limits covered by unit tests |
 
@@ -268,3 +269,9 @@ docker compose down
 - For the Cost Management reconciliation: `azure-live.db` holds 674 rows / 0.0584024 USD for
   2026-10-30. Four further calls were made outside that ledger (v1 endpoint smoke, two tracing
   calls, one Docker call), about 0.00005 USD, so the Azure figure should read 0.06 USD.
+- The `gpt-4.1-mini-dev` deployment was created as regional `Standard`; the Retail Prices API
+  lists regional gpt-4.1-mini at 0.484 / 1.936 USD per 1M tokens, 21 % above the Global
+  Standard list price the price book carries (0.40 / 1.60). The 2026-10-30 usage (12,214 in,
+  33,448 out) will therefore be billed about 0.071 USD against the ledger's 0.0584 USD. The
+  deployment was recreated as `GlobalStandard` on 2026-10-30 at about 17:00 CET, so later
+  usage is priced as the book says. `pricing sync --deployment regional` would have shown it.

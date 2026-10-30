@@ -56,6 +56,8 @@ tests/             one test module per source module, 117 tests, FakeProvider in
 - Cached prompt tokens (`usage.prompt_tokens_details.cached_tokens`) are billed at the row's
   `cached_input` price and stored on the ledger row; an upstream 429 is passed through as
   `429 upstream_rate_limited` with `Retry-After`, never as 502.
+- A price book row's `reasoning: true` turns the client's `max_tokens` into
+  `max_completion_tokens` and drops `temperature` before the upstream call.
 - A price book row's `provider` picks the adapter; `LFG_PROVIDER` is only the default
   (ADR-0011). An unconfigured provider falls back to the default with a warning, not an error.
 - Response always carries `X-FinOps-Request-Id`, `X-FinOps-Cost-USD`, `X-FinOps-Budget-*`

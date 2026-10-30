@@ -105,3 +105,13 @@ def test_provider_field_is_optional(tmp_path: Path) -> None:
     assert book.provider_for("b") is None
     with pytest.raises(UnknownModelError):
         book.provider_for("nope")
+
+
+def test_reasoning_flag_defaults_to_false(tmp_path: Path) -> None:
+    path = tmp_path / "pricing.yaml"
+    path.write_text(
+        "version: 1\ncurrency: USD\nmodels:\n"
+        "  r: {input: 1, output: 1, reasoning: true}\n  c: {input: 1, output: 1}\n"
+    )
+    book = PriceBook.from_yaml(path)
+    assert book.is_reasoning("r") and not book.is_reasoning("c")

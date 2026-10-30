@@ -13,7 +13,7 @@
 version: "2026-11-01"
 
 defaults:
-  allowed_models: ["gpt-4o-mini", "gpt-4.1-mini", "llama3.2:3b", "llama3.1:8b", "mistral:7b"]
+  allowed_models: ["gpt-4o-mini", "gpt-4.1-mini", "gpt-5-mini", "llama3.2:3b", "llama3.1:8b", "mistral:7b"]
   budget:
     monthly_usd: 50
     warn_at: 0.8

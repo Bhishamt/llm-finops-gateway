@@ -27,12 +27,14 @@ class OllamaProvider:
         *,
         temperature: float | None = None,
         max_tokens: int | None = None,
+        max_completion_tokens: int | None = None,
     ) -> CompletionResult:
         options: dict[str, Any] = {}
         if temperature is not None:
             options["temperature"] = temperature
-        if max_tokens is not None:
-            options["num_predict"] = max_tokens
+        limit = max_tokens if max_tokens is not None else max_completion_tokens
+        if limit is not None:
+            options["num_predict"] = limit
         payload: dict[str, Any] = {"model": model, "messages": messages, "stream": False}
         if options:
             payload["options"] = options

@@ -206,3 +206,39 @@ def test_price_book_provider_routes_each_model(tmp_path: Path, ledger: Ledger) -
     }
     assert (health["providers"], health["default_provider"]) == ("fake,fake2", "fake")
     assert second.closed and default.closed
+
+
+def test_reasoning_model_translates_generation_params(tmp_path: Path, ledger: Ledger) -> None:
+    path = tmp_path / "pricing.yaml"
+    path.write_text(
+        "version: r\ncurrency: USD\nmodels:\n  thinker: {input: 1, output: 1, reasoning: true}\n"
+    )
+    provider = FakeProvider(output_tokens=40, reasoning_tokens=40)
+    settings = Settings(
+        provider=ProviderKind.OLLAMA,
+        auth_mode="headers",
+        pricing_path=path,
+        database_url="sqlite:///:memory:",
+    )
+    app = create_app(
+        settings,
+        price_book=PriceBook.from_yaml(path),
+        policies=PolicySet.empty(),
+        keyring=KeyRing.empty(),
+        ledger=ledger,
+        provider=provider,
+    )
+    with TestClient(app) as c:
+        r = c.post(
+            "/v1/chat/completions",
+            json={**BODY, "model": "thinker", "temperature": 0.2, "max_tokens": 40},
+            headers=ATTR_HEADERS,
+        )
+    assert r.status_code == 200, r.text
+    assert r.json()["usage"]["completion_tokens_details"] == {"reasoning_tokens": 40}
+    call = provider.calls[0]
+    assert (call["temperature"], call["max_tokens"], call["max_completion_tokens"]) == (
+        None,
+        None,
+        40,
+    )
