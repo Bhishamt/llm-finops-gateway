@@ -57,15 +57,22 @@ class AzureOpenAIProvider:
         except httpx.HTTPError as exc:
             raise ProviderError(self.name, f"request failed: {exc}") from exc
         if resp.status_code >= 400:
-            raise ProviderError(self.name, resp.text[:200], status_code=resp.status_code)
+            raise ProviderError(
+                self.name,
+                resp.text[:200],
+                status_code=resp.status_code,
+                retry_after=resp.headers.get("Retry-After"),
+            )
         data: dict[str, Any] = resp.json()
         choice = data["choices"][0]
         usage: dict[str, Any] = data.get("usage") or {}
+        prompt_details: dict[str, Any] = usage.get("prompt_tokens_details") or {}
         return CompletionResult(
             content=str(choice["message"].get("content") or ""),
             input_tokens=int(usage.get("prompt_tokens", 0)),
             output_tokens=int(usage.get("completion_tokens", 0)),
             finish_reason=str(choice.get("finish_reason") or "stop"),
+            cached_input_tokens=int(prompt_details.get("cached_tokens", 0)),
             raw=data,
         )
 

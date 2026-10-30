@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, SerializerFunctionWrapHandler, model_serializer
 
 Role = Literal["system", "user", "assistant", "tool"]
 
@@ -22,10 +22,22 @@ class ChatRequest(BaseModel):
     stream: bool = False
 
 
+class PromptTokensDetails(BaseModel):
+    cached_tokens: int
+
+
 class Usage(BaseModel):
     prompt_tokens: int
     completion_tokens: int
     total_tokens: int
+    prompt_tokens_details: PromptTokensDetails | None = None
+
+    @model_serializer(mode="wrap")
+    def _omit_empty_details(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        data: dict[str, Any] = handler(self)
+        if data.get("prompt_tokens_details") is None:
+            data.pop("prompt_tokens_details", None)
+        return data
 
 
 class Choice(BaseModel):

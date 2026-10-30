@@ -8,7 +8,21 @@ is called out here.
 ## [Unreleased]
 
 ### Added
-- Nothing yet.
+- Generic OpenAI-compatible provider (`LFG_PROVIDER=openai_compat`): base URL, optional bearer
+  key, extra headers and a model name map. Covers the Azure OpenAI v1 endpoint of Azure AI
+  Foundry resources, vLLM, LocalAI and OpenAI (ADR-0010).
+- Several providers in one gateway: every configured provider is built at startup and a price
+  book row's `provider` key says which one serves the model; `LFG_PROVIDER` is the default.
+  `GET /v1/models` reports the serving provider, `/healthz` lists the configured ones (ADR-0011).
+- Prompt-cache pricing: `cached_input` in the price book, `usage.prompt_tokens_details.cached_tokens`
+  read from Azure OpenAI and OpenAI-compatible responses, billed at the cached price, recorded
+  on the ledger row and echoed in the response `usage`.
+
+### Changed
+- An upstream 429 is returned as `429 upstream_rate_limited` with the provider's `Retry-After`
+  instead of `502 upstream_error`; the reservation is still released and nothing is recorded.
+- Price book version `2026-11-02`: cached-input prices for the GPT-4o and GPT-4.1 rows and a
+  `provider` on every row.
 
 ## [0.1.0] - 2026-10-28
 

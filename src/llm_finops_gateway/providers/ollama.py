@@ -41,7 +41,12 @@ class OllamaProvider:
         except httpx.HTTPError as exc:
             raise ProviderError(self.name, f"request failed: {exc}") from exc
         if resp.status_code >= 400:
-            raise ProviderError(self.name, resp.text[:200], status_code=resp.status_code)
+            raise ProviderError(
+                self.name,
+                resp.text[:200],
+                status_code=resp.status_code,
+                retry_after=resp.headers.get("Retry-After"),
+            )
         data: dict[str, Any] = resp.json()
         return CompletionResult(
             content=str(data["message"]["content"]),

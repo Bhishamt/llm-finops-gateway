@@ -75,3 +75,33 @@ def test_repo_price_book_loads() -> None:
 )
 def test_money_formatting(value: Decimal | int, expected: str) -> None:
     assert money(value) == expected
+
+
+def test_cached_input_tokens_billed_at_cached_price(price_book: PriceBook) -> None:
+    # 60 fresh * 2.5 + 40 cached * 1.25 + 50 out * 10 = 150 + 50 + 500 per 1M
+    assert price_book.cost("priced", 100, 50, cached_input_tokens=40) == Decimal("0.0007")
+
+
+def test_cached_input_without_cached_price_costs_input_price(tmp_path: Path) -> None:
+    path = tmp_path / "pricing.yaml"
+    path.write_text("version: 1\ncurrency: USD\nmodels:\n  m: {input: 2, output: 4}\n")
+    book = PriceBook.from_yaml(path)
+    assert book.cost("m", 100, 0, cached_input_tokens=100) == book.cost("m", 100, 0)
+
+
+def test_cached_tokens_cannot_exceed_input(price_book: PriceBook) -> None:
+    with pytest.raises(ValueError):
+        price_book.cost("priced", 10, 0, cached_input_tokens=11)
+
+
+def test_provider_field_is_optional(tmp_path: Path) -> None:
+    path = tmp_path / "pricing.yaml"
+    path.write_text(
+        "version: 1\ncurrency: USD\nmodels:\n"
+        "  a: {input: 1, output: 1, provider: azure_openai}\n  b: {input: 1, output: 1}\n"
+    )
+    book = PriceBook.from_yaml(path)
+    assert book.provider_for("a") == "azure_openai"
+    assert book.provider_for("b") is None
+    with pytest.raises(UnknownModelError):
+        book.provider_for("nope")

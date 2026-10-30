@@ -18,7 +18,7 @@ PRICING_YAML = """\
 version: test-1
 currency: USD
 models:
-  priced: {input: 2.5, output: 10}
+  priced: {input: 2.5, output: 10, cached_input: 1.25}
   free: {input: 0, output: 0}
 """
 
@@ -30,9 +30,12 @@ class FakeProvider:
 
     name = "fake"
 
-    def __init__(self, input_tokens: int = 100, output_tokens: int = 50) -> None:
+    def __init__(
+        self, input_tokens: int = 100, output_tokens: int = 50, cached_input_tokens: int = 0
+    ) -> None:
         self.input_tokens = input_tokens
         self.output_tokens = output_tokens
+        self.cached_input_tokens = cached_input_tokens
         self.calls: list[dict[str, object]] = []
         self.closed = False
         self.fail_with: Exception | None = None
@@ -59,6 +62,7 @@ class FakeProvider:
             content="hello from fake",
             input_tokens=self.input_tokens,
             output_tokens=self.output_tokens,
+            cached_input_tokens=self.cached_input_tokens,
         )
 
     async def aclose(self) -> None:

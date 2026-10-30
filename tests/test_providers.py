@@ -9,6 +9,7 @@ import respx
 from llm_finops_gateway.providers.azure_openai import AzureOpenAIProvider
 from llm_finops_gateway.providers.base import ProviderError
 from llm_finops_gateway.providers.ollama import OllamaProvider
+from llm_finops_gateway.providers.openai_compat import OpenAICompatProvider
 
 MESSAGES = [{"role": "user", "content": "hi"}]
 
@@ -112,3 +113,122 @@ async def test_azure_openai_error_status_becomes_provider_error() -> None:
         await provider.chat("m", MESSAGES)
     assert exc.value.status_code == 429
     await provider.aclose()
+
+
+@respx.mock
+async def test_openai_compat_sends_bearer_and_maps_model() -> None:
+    route = respx.post("https://res.openai.azure.com/openai/v1/chat/completions").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {"message": {"role": "assistant", "content": "hi"}, "finish_reason": "stop"}
+                ],
+                "usage": {"prompt_tokens": 11, "completion_tokens": 4, "total_tokens": 15},
+            },
+        )
+    )
+    provider = OpenAICompatProvider(
+        base_url="https://res.openai.azure.com/openai/v1/",
+        api_key="secret",
+        models={"gpt-4o-mini": "gpt-4o-mini-eastus"},
+    )
+    result = await provider.chat("gpt-4o-mini", MESSAGES, temperature=0.5, max_tokens=20)
+    await provider.aclose()
+
+    assert (result.content, result.input_tokens, result.output_tokens) == ("hi", 11, 4)
+    sent = route.calls.last.request
+    assert sent.headers["Authorization"] == "Bearer secret"
+    payload = json.loads(sent.content)
+    assert payload["model"] == "gpt-4o-mini-eastus"
+    assert payload["stream"] is False
+    assert payload["temperature"] == 0.5
+    assert payload["max_tokens"] == 20
+
+
+@respx.mock
+async def test_openai_compat_without_key_sends_extra_headers_only() -> None:
+    route = respx.post("http://vllm.test/v1/chat/completions").mock(
+        return_value=httpx.Response(
+            200, json={"choices": [{"message": {"content": "x"}}], "usage": {}}
+        )
+    )
+    provider = OpenAICompatProvider(base_url="http://vllm.test/v1", headers={"X-Tenant": "a"})
+    result = await provider.chat("llama", MESSAGES)
+    await provider.aclose()
+
+    assert result.content == "x" and result.input_tokens == 0 and result.output_tokens == 0
+    sent = route.calls.last.request
+    assert "Authorization" not in sent.headers
+    assert sent.headers["X-Tenant"] == "a"
+    assert json.loads(sent.content)["model"] == "llama"
+
+
+@respx.mock
+async def test_openai_compat_error_status_becomes_provider_error() -> None:
+    respx.post("http://vllm.test/v1/chat/completions").mock(
+        return_value=httpx.Response(400, json={"error": {"message": "bad request"}})
+    )
+    provider = OpenAICompatProvider(base_url="http://vllm.test/v1")
+    with pytest.raises(ProviderError) as exc:
+        await provider.chat("m", MESSAGES)
+    assert exc.value.status_code == 400
+    assert exc.value.provider == "openai_compat"
+    await provider.aclose()
+
+
+@respx.mock
+async def test_openai_compat_connection_error_becomes_provider_error() -> None:
+    respx.post("http://vllm.test/v1/chat/completions").mock(side_effect=httpx.ConnectError("down"))
+    provider = OpenAICompatProvider(base_url="http://vllm.test/v1")
+    with pytest.raises(ProviderError):
+        await provider.chat("m", MESSAGES)
+    await provider.aclose()
+
+
+@respx.mock
+async def test_openai_compat_reads_cached_tokens_and_retry_after() -> None:
+    respx.post("http://vllm.test/v1/chat/completions").mock(
+        side_effect=[
+            httpx.Response(429, headers={"Retry-After": "7"}, text="slow down"),
+            httpx.Response(
+                200,
+                json={
+                    "choices": [{"message": {"content": "x"}}],
+                    "usage": {
+                        "prompt_tokens": 100,
+                        "completion_tokens": 5,
+                        "prompt_tokens_details": {"cached_tokens": 60},
+                    },
+                },
+            ),
+        ]
+    )
+    provider = OpenAICompatProvider(base_url="http://vllm.test/v1")
+    with pytest.raises(ProviderError) as exc:
+        await provider.chat("m", MESSAGES)
+    assert (exc.value.status_code, exc.value.retry_after) == (429, "7")
+    result = await provider.chat("m", MESSAGES)
+    await provider.aclose()
+    assert (result.input_tokens, result.cached_input_tokens, result.output_tokens) == (100, 60, 5)
+
+
+@respx.mock
+async def test_azure_openai_reads_cached_tokens() -> None:
+    respx.post("https://res.openai.azure.com/openai/deployments/m/chat/completions").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "choices": [{"message": {"content": "x"}}],
+                "usage": {
+                    "prompt_tokens": 1200,
+                    "completion_tokens": 8,
+                    "prompt_tokens_details": {"cached_tokens": 1024},
+                },
+            },
+        )
+    )
+    provider = AzureOpenAIProvider(endpoint="https://res.openai.azure.com", api_key="k")
+    result = await provider.chat("m", MESSAGES)
+    await provider.aclose()
+    assert result.cached_input_tokens == 1024

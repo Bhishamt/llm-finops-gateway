@@ -51,7 +51,8 @@ A rendered version of this flow is in `images/architecture.svg`.
 | `providers/base.py`         | `Provider` protocol, `CompletionResult`, `ProviderError`                |
 | `providers/ollama.py`       | Adapter for Ollama `/api/chat`                                          |
 | `providers/azure_openai.py` | Adapter for Azure OpenAI data-plane REST with deployment mapping        |
-| `main.py`                   | `create_app()` factory, endpoints, error handlers (ADR-0004)            |
+| `providers/openai_compat.py` | Adapter for any OpenAI Chat Completions server: Azure OpenAI v1, vLLM, LocalAI, OpenAI (ADR-0010) |
+| `main.py`                   | `create_app()` factory, endpoints, error handlers, model-to-provider routes (ADR-0004, 0011) |
 | `cli.py`                    | `llm-finops-gateway serve` and `keys new | hash | check`                |
 
 ## Data model
