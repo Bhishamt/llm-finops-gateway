@@ -105,6 +105,14 @@ class Settings(BaseSettings):
         default=3600, ge=0, description="Same event for the same team/provider at most this often."
     )
 
+    # Report page: extra display currencies as units per 1 price-book unit, e.g. {"EUR": 0.88}
+    report_rates: dict[str, float] = Field(
+        default_factory=dict,
+        description=(
+            "Display-only conversion rates for /finops; the ledger stays in the book's currency."
+        ),
+    )
+
     # Observability
     metrics_enabled: bool = True
     otel_enabled: bool = Field(
