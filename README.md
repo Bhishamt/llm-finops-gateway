@@ -7,8 +7,8 @@
 **An OpenAI-compatible gateway that gives every LLM call an owner, a price and a policy.**
 
 Teams adopt LLMs faster than finance can allocate the bill and faster than security can enforce
-policy. This gateway sits between your applications and the model provider (Azure OpenAI or
-Ollama today) and, on every call:
+policy. This gateway sits between your applications and the model provider (Azure OpenAI,
+Ollama, or any OpenAI-compatible endpoint) and, on every call:
 
 1. **Knows who is calling**: team-bound API keys (`Authorization: Bearer lfg_...`), hashes in
    git, the raw key only in the team's secret store. The team cannot be spoofed with a header.
@@ -125,6 +125,42 @@ Then run the gateway and call it with `"model": "gpt-4o-mini"`. Every model name
 exist in `config/pricing.yaml`. A step-by-step `az` CLI walkthrough for a disposable test
 setup is in [docs/azure-setup.md](docs/azure-setup.md).
 
+### Any OpenAI-compatible endpoint (Azure OpenAI v1, vLLM, LocalAI, OpenAI)
+
+One adapter for every server that speaks the OpenAI Chat Completions API (ADR-0010). The base
+URL includes the API prefix; the key is sent as a bearer token; an optional map translates the
+model name clients and the price book use into the upstream name (an Azure deployment, a vLLM
+served model name):
+
+```dotenv
+LFG_PROVIDER=openai_compat
+LFG_OPENAI_COMPAT_BASE_URL=https://<resource>.openai.azure.com/openai/v1
+LFG_OPENAI_COMPAT_API_KEY=<key>
+LFG_OPENAI_COMPAT_MODELS={"gpt-4o-mini": "gpt-4o-mini-eastus"}
+# LFG_OPENAI_COMPAT_HEADERS={"X-Custom": "value"}      # extra headers, optional
+```
+
+For an Azure AI Foundry resource this is the v1 endpoint, where the deployment name is the model.
+The classic deployment path with `api-version` stays available as `LFG_PROVIDER=azure_openai`.
+Local servers without authentication (vLLM, LocalAI on a trusted network) simply omit the key.
+
+### Several providers in one gateway
+
+`LFG_PROVIDER` is only the default. Every provider whose settings are present is available at
+the same time, and a price book row says which one serves the model (ADR-0011):
+
+```yaml
+models:
+  gpt-4.1-mini: { input: 0.40, output: 1.60, cached_input: 0.10, provider: azure_openai }
+  "llama3.2:3b": { input: 0.00, output: 0.00, provider: ollama }
+```
+
+With the shipped price book, setting the two Azure variables next to a local Ollama gives
+"cloud models on Azure, small models on-prem" behind one base URL. `GET /v1/models` shows which
+provider serves each model. A row naming a provider that is not configured falls back to the
+default with a startup warning. `cached_input` prices the prompt tokens the provider served
+from its cache (`usage.prompt_tokens_details.cached_tokens`), the way Azure and OpenAI bill them.
+
 ### The response
 
 Standard OpenAI shape plus an `x_finops` block, and `X-FinOps-*` headers:
@@ -173,8 +209,9 @@ HTTP 403
 
 Other rejections: `401 missing_api_key / invalid_api_key / api_key_expired / api_key_disabled`,
 `403 team_mismatch / project_not_allowed / model_not_allowed`, `429 rate_limited` with
-`Retry-After`, `422` unpriced model, `400` missing project, `502` upstream error (nothing is
-recorded, the reservation is released).
+`Retry-After`, `422` unpriced model, `400` missing project, `429 upstream_rate_limited` when
+the provider throttles (its `Retry-After` is passed through), `502` upstream error (in both
+upstream cases nothing is recorded and the reservation is released).
 
 ### Point an OpenAI SDK at it
 
@@ -221,7 +258,7 @@ teams:
 | Method | Path                     | Purpose                                                    |
 | ------ | ------------------------ | ---------------------------------------------------------- |
 | POST   | `/v1/chat/completions`   | OpenAI-compatible chat completion (non-streaming)          |
-| GET    | `/v1/models`             | Models the price book knows (and therefore can allow)      |
+| GET    | `/v1/models`             | Models the price book knows, and which provider serves each |
 | GET    | `/v1/finops/summary`     | Cost grouped by team / project / model, filterable         |
 | GET    | `/v1/finops/budgets`     | Month-to-date budget, rate limit and allow-list per team   |
 | GET    | `/metrics`               | Prometheus: requests by outcome, cost, tokens, latency, budget ratio |
@@ -234,12 +271,16 @@ Environment variables (prefix `LFG_`; a `.env` file is read if present):
 
 | Variable                        | Default                   | Notes                                   |
 | ------------------------------- | ------------------------- | --------------------------------------- |
-| `LFG_PROVIDER`                  | `ollama`                  | `ollama` or `azure_openai`              |
+| `LFG_PROVIDER`                  | `ollama`                  | default provider: `ollama`, `azure_openai` or `openai_compat`; all configured ones are available |
 | `LFG_OLLAMA_BASE_URL`           | `http://localhost:11434`  |                                         |
 | `LFG_AZURE_OPENAI_ENDPOINT`     |                           | required for `azure_openai`             |
 | `LFG_AZURE_OPENAI_API_KEY`      |                           | required for `azure_openai`             |
 | `LFG_AZURE_OPENAI_API_VERSION`  | `2024-10-21`              |                                         |
 | `LFG_AZURE_OPENAI_DEPLOYMENTS`  | `{}`                      | JSON map model name -> deployment       |
+| `LFG_OPENAI_COMPAT_BASE_URL`    |                           | required for `openai_compat`; includes the API prefix (`.../openai/v1`, `.../v1`) |
+| `LFG_OPENAI_COMPAT_API_KEY`     |                           | sent as `Authorization: Bearer`; optional |
+| `LFG_OPENAI_COMPAT_HEADERS`     | `{}`                      | JSON map of extra request headers       |
+| `LFG_OPENAI_COMPAT_MODELS`      | `{}`                      | JSON map model name -> upstream model or deployment name |
 | `LFG_AUTH_MODE`                 | `api_key`                 | `api_key` or `headers` (dev only)       |
 | `LFG_KEYS_PATH`                 | `config/keys.yaml`        | hashes only                             |
 | `LFG_PRICING_PATH`              | `config/pricing.yaml`     |                                         |
@@ -266,7 +307,7 @@ Every request span carries `finops.team`, `finops.project`, `finops.use_case`, `
 ## Docker
 
 ```bash
-docker compose up --build          # gateway + Ollama
+docker compose up --build          # gateway + Ollama; needs Docker Compose 2.24 or newer
 docker build -t llm-finops-gateway . && docker run --env-file .env -p 8080:8080 llm-finops-gateway
 ```
 
@@ -287,8 +328,7 @@ Architecture notes: [docs/architecture.md](docs/architecture.md). Operations:
 ## Roadmap
 
 - **Next**: evaluation replay and regression scoring ([ADR-0009](docs/adr/0009-evaluation-replay.md),
-  design proposed); generic OpenAI-compatible provider (vLLM, TGI, LocalAI); OIDC attribution
-  (Keycloak, Entra ID) alongside team keys.
+  design proposed); OIDC attribution (Keycloak, Entra ID) alongside team keys.
 - **Then**: streaming with cost settled on the final usage chunk; price book sync from the
   Azure Retail Prices API with per-region prices; amortised and shared-pool pricing for
   self-hosted models with token budgets; `ledger reconcile` CLI; managed identity for Azure OpenAI.

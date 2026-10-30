@@ -1,10 +1,17 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from llm_finops_gateway.auth import KeyRing
+from llm_finops_gateway.config import ProviderKind, Settings
 from llm_finops_gateway.ledger import Ledger
+from llm_finops_gateway.main import create_app
+from llm_finops_gateway.policy import PolicySet
+from llm_finops_gateway.pricing import PriceBook
+from llm_finops_gateway.providers.base import ProviderError
 from tests.conftest import ATTR_HEADERS, FakeProvider
 
 BODY = {"model": "priced", "messages": [{"role": "user", "content": "hi"}]}
@@ -115,3 +122,87 @@ def test_zero_cost_is_rendered_as_plain_zero(
     assert r.json()["x_finops"]["cost_usd"] == "0"
     summary = client.get("/v1/finops/summary").json()
     assert summary["rows"][0]["cost_usd"] == "0" and summary["total_cost_usd"] == "0"
+
+
+def test_upstream_rate_limit_is_passed_through_as_429(
+    client: TestClient, fake_provider: FakeProvider, ledger: Ledger
+) -> None:
+    fake_provider.fail_with = ProviderError("fake", "throttled", status_code=429, retry_after="7")
+    r = client.post("/v1/chat/completions", json=BODY, headers=ATTR_HEADERS)
+    assert r.status_code == 429
+    assert r.headers["Retry-After"] == "7"
+    assert r.json()["error"] == "upstream_rate_limited"
+    assert ledger.summary() == []
+
+
+def test_cached_input_tokens_are_priced_and_reported(
+    pricing_path: Path, price_book: PriceBook, ledger: Ledger
+) -> None:
+    provider = FakeProvider(input_tokens=100, output_tokens=50, cached_input_tokens=40)
+    settings = Settings(
+        provider=ProviderKind.OLLAMA,
+        auth_mode="headers",
+        pricing_path=pricing_path,
+        database_url="sqlite:///:memory:",
+    )
+    app = create_app(
+        settings,
+        price_book=price_book,
+        policies=PolicySet.empty(),
+        keyring=KeyRing.empty(),
+        ledger=ledger,
+        provider=provider,
+    )
+    with TestClient(app) as c:
+        r = c.post("/v1/chat/completions", json=BODY, headers=ATTR_HEADERS)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["usage"]["prompt_tokens_details"] == {"cached_tokens": 40}
+    assert Decimal(body["x_finops"]["cost_usd"]) == Decimal("0.0007")
+
+
+def test_price_book_provider_routes_each_model(tmp_path: Path, ledger: Ledger) -> None:
+    path = tmp_path / "pricing.yaml"
+    path.write_text(
+        "version: r\ncurrency: USD\nmodels:\n"
+        "  priced: {input: 1, output: 1}\n"
+        "  routed: {input: 1, output: 1, provider: fake2}\n"
+        "  orphan: {input: 1, output: 1, provider: nowhere}\n"
+    )
+    default, second = FakeProvider(), FakeProvider()
+    second.name = "fake2"
+    settings = Settings(
+        provider=ProviderKind.OLLAMA,
+        auth_mode="headers",
+        pricing_path=path,
+        database_url="sqlite:///:memory:",
+    )
+    app = create_app(
+        settings,
+        price_book=PriceBook.from_yaml(path),
+        policies=PolicySet.empty(),
+        keyring=KeyRing.empty(),
+        ledger=ledger,
+        provider=default,
+        providers={"fake2": second},
+    )
+    with TestClient(app) as c:
+        routed = c.post(
+            "/v1/chat/completions", json={**BODY, "model": "routed"}, headers=ATTR_HEADERS
+        )
+        orphan = c.post(
+            "/v1/chat/completions", json={**BODY, "model": "orphan"}, headers=ATTR_HEADERS
+        )
+        models = c.get("/v1/models").json()["data"]
+        health = c.get("/healthz").json()
+    assert routed.json()["x_finops"]["provider"] == "fake2"
+    assert second.calls[0]["model"] == "routed"
+    assert orphan.json()["x_finops"]["provider"] == "fake"  # unconfigured -> default
+    assert default.calls[0]["model"] == "orphan"
+    assert {m["id"]: m["owned_by"] for m in models} == {
+        "orphan": "fake",
+        "priced": "fake",
+        "routed": "fake2",
+    }
+    assert (health["providers"], health["default_provider"]) == ("fake,fake2", "fake")
+    assert second.closed and default.closed

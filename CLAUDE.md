@@ -12,7 +12,7 @@ Apache-2.0, maintained by András Kelle (`andrasKelle`). Version `0.1.0`, first 
 2026-10-28, repository private until launch.
 
 Audience: platform / FinOps teams that put the gateway in front of Azure OpenAI, Ollama (on-prem)
-and, next, any OpenAI-compatible endpoint. Positioning vs LiteLLM, Portkey, Bifrost, Helicone is
+and any OpenAI-compatible endpoint (Azure OpenAI v1, vLLM, LocalAI). Positioning vs LiteLLM, Portkey, Bifrost, Helicone is
 in `docs/comparison.md`: attribution is a precondition, price book is data in git, unknown
 models fail closed, policy is reviewable YAML.
 
@@ -20,22 +20,23 @@ models fail closed, policy is reviewable YAML.
 
 ```
 src/llm_finops_gateway/
-  main.py          create_app(settings, price_book, policies, keyring, ledger, provider); endpoints
+  main.py          create_app(settings, price_book, policies, keyring, ledger, provider, providers);
+                   endpoints, build_providers(), route_models() (ADR-0011)
   config.py        Settings (env prefix LFG_): provider, auth_mode, paths, database_url, otel_*
   pricing.py       PriceBook (config/pricing.yaml, versioned), UnknownModelError, money()
   policy.py        PolicySet / PolicyEngine: allow-list -> rate limit -> atomic budget reservation
   ledger.py        SQLAlchemy ledger (cost_records, budget_counters), reserve/settle/release
   auth.py          KeyRing (SHA-256 hashes from config/keys.yaml), generate_key(), hash_key()
   attribution.py   Attribution(team, project, use_case, key_id); api_key vs headers mode
-  providers/       base.py (Provider protocol), ollama.py, azure_openai.py
+  providers/       base.py (Provider protocol), ollama.py, azure_openai.py, openai_compat.py (ADR-0010)
   metrics.py       Prometheus; telemetry.py optional OTel ([otel] extra, finops.* span attrs)
   models.py        request/response models (OpenAI shape + x_finops block)
   cli.py           llm-finops-gateway serve | keys new|hash|check
 config/            pricing.yaml, policies.yaml, keys.yaml (hashes only, repo copy is `keys: []`)
 demo/              run_demo.py (simulated or live), policies.yaml (tiny budgets), README.md
 docs/              architecture.md, deployment.md, azure-setup.md, testing-plan.md, comparison.md,
-                   first-publish.md, adr/0001..0009
-tests/             one test module per source module, 111 tests, FakeProvider in conftest.py
+                   first-publish.md, adr/0001..0011
+tests/             one test module per source module, 117 tests, FakeProvider in conftest.py
 ```
 
 ## Behaviour that must not regress
@@ -52,6 +53,11 @@ tests/             one test module per source module, 111 tests, FakeProvider in
   block -> 403 `budget_exceeded`. Rate limit runs before the budget check -> 429 with
   `Retry-After` (ADR-0008, per instance, in memory).
 - Every money string goes through `pricing.money()` (Decimal, no `0.0`, no `0.00`).
+- Cached prompt tokens (`usage.prompt_tokens_details.cached_tokens`) are billed at the row's
+  `cached_input` price and stored on the ledger row; an upstream 429 is passed through as
+  `429 upstream_rate_limited` with `Retry-After`, never as 502.
+- A price book row's `provider` picks the adapter; `LFG_PROVIDER` is only the default
+  (ADR-0011). An unconfigured provider falls back to the default with a warning, not an error.
 - Response always carries `X-FinOps-Request-Id`, `X-FinOps-Cost-USD`, `X-FinOps-Budget-*`
   and the `x_finops` block (cost, price_book_version, policy, warnings, key_id).
 - Endpoints: `/v1/chat/completions`, `/v1/models`, `/v1/finops/summary`, `/v1/finops/budgets`,
@@ -84,7 +90,7 @@ Bias toward caution over speed; for trivial tasks use judgment.
 - `make check` must be green before any commit: ruff (lint + format), mypy `--strict` on
   `src` and `tests`, pytest. Pre-commit is installed by `make install`.
 - Every module has a test module; new behaviour comes with a test in the same change.
-- Every design decision gets an ADR in `docs/adr/` (next number: 0010). ADR-0009 (evaluation
+- Every design decision gets an ADR in `docs/adr/` (next number: 0012). ADR-0009 (evaluation
   replay) is Proposed, not implemented.
 - Decimal for money everywhere; never float.
 - Secrets only via env / `SecretStr`. Never commit a raw `lfg_` key, `.env`, `*.db`, `demo/out/`.
@@ -115,8 +121,9 @@ Azure OpenAI: `LFG_PROVIDER=azure_openai` plus `LFG_AZURE_OPENAI_ENDPOINT`,
 ## Test status (docs/testing-plan.md)
 
 Passed 2026-10-28 on macOS with `llama3.2:3b`: sections 0 to 3c (unit suite, simulated demo,
-Ollama, budget warn/block, team keys, rate limit). Not yet run: 3d tracing, 4 Azure OpenAI with
-Cost Management reconciliation, 5 Docker.
+Ollama, budget warn/block, team keys, rate limit). Section 4 Azure OpenAI passed 2026-10-30
+(`gpt-4.1-mini-dev` in Sweden Central, both adapters; Cost Management reconciliation 4.5 still
+pending). Not yet run: 3d tracing, 5 Docker.
 
 ## CI and release state
 

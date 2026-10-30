@@ -14,11 +14,22 @@ az group create -n $RG -l $LOC
 az cognitiveservices account create -n $NAME -g $RG -l $LOC \
   --kind OpenAI --sku S0 --custom-domain $NAME
 
-# one small deployment; the deployment name is what the gateway maps to
+# one small deployment; the deployment name is what the gateway maps to.
+# gpt-4o-mini 2024-07-18 cannot be deployed any more (deprecated for new deployments since
+# 2026-03-31); gpt-4.1-mini is the cheapest current model in the price book.
+# Capacity is thousands of tokens per minute; 10 is too small for the demo's bursts and Azure
+# answers 429, which the gateway reports as 502.
 az cognitiveservices account deployment create -n $NAME -g $RG \
-  --deployment-name gpt-4o-mini-dev \
-  --model-name gpt-4o-mini --model-version 2024-07-18 --model-format OpenAI \
-  --sku-name Standard --sku-capacity 10
+  --deployment-name gpt-4.1-mini-dev \
+  --model-name gpt-4.1-mini --model-version 2025-04-14 --model-format OpenAI \
+  --sku-name Standard --sku-capacity 50
+```
+
+Check what is deployable in your region before picking a model:
+
+```bash
+az cognitiveservices model list -l $LOC \
+  --query "[?model.format=='OpenAI'].{name:model.name, version:model.version, lifecycle:model.lifecycleStatus}" -o table
 ```
 
 ## 2. Credentials into `.env`
@@ -32,7 +43,19 @@ LFG_PROVIDER=azure_openai
 LFG_AZURE_OPENAI_ENDPOINT=$ENDPOINT
 LFG_AZURE_OPENAI_API_KEY=$KEY
 LFG_AZURE_OPENAI_API_VERSION=2024-10-21
-LFG_AZURE_OPENAI_DEPLOYMENTS={"gpt-4o-mini": "gpt-4o-mini-dev"}
+LFG_AZURE_OPENAI_DEPLOYMENTS={"gpt-4.1-mini": "gpt-4.1-mini-dev"}
+EOF
+```
+
+The same resource also exposes the OpenAI v1 endpoint, which the generic adapter serves
+(ADR-0010); the deployment name is the model there, so the map does the same job:
+
+```bash
+cat > .env <<EOF
+LFG_PROVIDER=openai_compat
+LFG_OPENAI_COMPAT_BASE_URL=${ENDPOINT%/}/openai/v1
+LFG_OPENAI_COMPAT_API_KEY=$KEY
+LFG_OPENAI_COMPAT_MODELS={"gpt-4.1-mini": "gpt-4.1-mini-dev"}
 EOF
 ```
 
@@ -47,7 +70,7 @@ llm-finops-gateway --port 8080
 curl -s http://localhost:8080/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "X-Team: platform" -H "X-Project: azure-smoke" \
-  -d '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"One sentence about FinOps."}]}' | jq .x_finops
+  -d '{"model":"gpt-4.1-mini","messages":[{"role":"user","content":"One sentence about FinOps."}]}' | jq .x_finops
 curl -s http://localhost:8080/v1/finops/summary | jq
 ```
 

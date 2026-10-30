@@ -122,13 +122,16 @@ def build_inprocess_client(seed: int) -> Any:
         policies_path=ROOT / "demo" / "policies.yaml",
         database_url=f"sqlite:///{db}",
     )
+    simulated = SimulatedProvider(seed)
     app = create_app(
         settings,
         price_book=PriceBook.from_yaml(settings.pricing_path),
         policies=PolicySet.from_yaml(settings.policies_path),
         keyring=KeyRing.empty(),
         ledger=Ledger(settings.database_url),
-        provider=SimulatedProvider(seed),
+        provider=simulated,
+        # the shipped price book routes by provider name; the simulation plays all of them
+        providers={"azure_openai": simulated, "ollama": simulated},
     )
     return TestClient(app)
 

@@ -2,15 +2,21 @@
 # Bump `version` whenever a price changes; every ledger row records the version it was
 # priced with, so historical chargeback stays reproducible.
 # Any model NOT listed here is rejected by the gateway (ADR-0002).
-version: "2026-11-01"
+# `cached_input` (optional) is the price of prompt tokens the provider served from its prompt
+# cache (`usage.prompt_tokens_details.cached_tokens`); without it they cost the `input` price.
+version: "2026-11-02"
 currency: USD
 models:
-  # Azure OpenAI deployments (map model -> deployment with LFG_AZURE_OPENAI_DEPLOYMENTS)
-  gpt-4o: { input: 2.50, output: 10.00 }
-  gpt-4o-mini: { input: 0.15, output: 0.60 }
-  gpt-4.1: { input: 2.00, output: 8.00 }
-  gpt-4.1-mini: { input: 0.40, output: 1.60 }
+  # `provider` (optional) names the adapter that serves the model: ollama, azure_openai or
+  # openai_compat (ADR-0011). Rows without it go to LFG_PROVIDER. A provider that is not
+  # configured falls back to the default with a startup warning.
+  # Azure OpenAI deployments (map model -> deployment with LFG_AZURE_OPENAI_DEPLOYMENTS).
+  # Global Standard list prices; regional and Data Zone deployments can differ.
+  gpt-4o: { input: 2.50, output: 10.00, cached_input: 1.25, provider: azure_openai }
+  gpt-4o-mini: { input: 0.15, output: 0.60, cached_input: 0.075, provider: azure_openai }
+  gpt-4.1: { input: 2.00, output: 8.00, cached_input: 0.50, provider: azure_openai }
+  gpt-4.1-mini: { input: 0.40, output: 1.60, cached_input: 0.10, provider: azure_openai }
   # Local Ollama models. Zero today; amortised GPU/hour cost is on the roadmap.
-  "llama3.1:8b": { input: 0.00, output: 0.00 }
-  "llama3.2:3b": { input: 0.00, output: 0.00 }
-  "mistral:7b": { input: 0.00, output: 0.00 }
+  "llama3.1:8b": { input: 0.00, output: 0.00, provider: ollama }
+  "llama3.2:3b": { input: 0.00, output: 0.00, provider: ollama }
+  "mistral:7b": { input: 0.00, output: 0.00, provider: ollama }

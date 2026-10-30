@@ -14,6 +14,8 @@ immutable once accepted; a later ADR supersedes an earlier one rather than editi
 | [0007](0007-atomic-budget-reservation.md) | Atomic budget reservation before the upstream call | Accepted |
 | [0008](0008-rate-limits-in-memory.md) | Per-team rate limits: sliding window, in memory, per instance | Accepted |
 | [0009](0009-evaluation-replay.md) | Evaluation replay: re-run recorded traffic to score quality and cost together | Proposed |
+| [0010](0010-generic-openai-compatible-provider.md) | One generic adapter for every OpenAI-compatible endpoint | Accepted |
+| [0011](0011-provider-per-model.md) | Several providers in one gateway, chosen per model by the price book | Accepted |
 
 ## Template
 

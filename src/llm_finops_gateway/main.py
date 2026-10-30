@@ -35,6 +35,7 @@ from .models import (
     CostSummaryRow,
     FinOpsEnvelope,
     PolicyEnvelope,
+    PromptTokensDetails,
     TeamBudgetRow,
     Usage,
 )
@@ -43,24 +44,67 @@ from .pricing import PriceBook, UnknownModelError, money
 from .providers import Provider, ProviderError
 from .providers.azure_openai import AzureOpenAIProvider
 from .providers.ollama import OllamaProvider
+from .providers.openai_compat import OpenAICompatProvider
 from .telemetry import Telemetry
 
 log = logging.getLogger("llm_finops_gateway")
 
 
-def build_provider(settings: Settings) -> Provider:
-    if settings.provider is ProviderKind.AZURE_OPENAI:
-        assert settings.azure_openai_endpoint and settings.azure_openai_api_key
-        return AzureOpenAIProvider(
-            endpoint=settings.azure_openai_endpoint,
-            api_key=settings.azure_openai_api_key.get_secret_value(),
+def build_providers(settings: Settings) -> dict[str, Provider]:
+    """Every provider the settings describe, keyed by name (ADR-0011). Ollama needs no
+    credentials and is always present; the others are added when configured."""
+    providers: dict[str, Provider] = {
+        ProviderKind.OLLAMA.value: OllamaProvider(
+            base_url=settings.ollama_base_url, timeout=settings.request_timeout_seconds
+        )
+    }
+    endpoint, key = settings.azure_openai_endpoint, settings.azure_openai_api_key
+    if (endpoint is None) != (key is None):
+        raise RuntimeError(
+            "LFG_AZURE_OPENAI_ENDPOINT and LFG_AZURE_OPENAI_API_KEY must be set together"
+        )
+    if endpoint is not None and key is not None:
+        providers[ProviderKind.AZURE_OPENAI.value] = AzureOpenAIProvider(
+            endpoint=endpoint,
+            api_key=key.get_secret_value(),
             api_version=settings.azure_openai_api_version,
             deployments=settings.azure_openai_deployments,
             timeout=settings.request_timeout_seconds,
         )
-    return OllamaProvider(
-        base_url=settings.ollama_base_url, timeout=settings.request_timeout_seconds
-    )
+    if settings.openai_compat_base_url is not None:
+        compat_key = settings.openai_compat_api_key
+        providers[ProviderKind.OPENAI_COMPAT.value] = OpenAICompatProvider(
+            base_url=settings.openai_compat_base_url,
+            api_key=compat_key.get_secret_value() if compat_key else None,
+            headers=settings.openai_compat_headers,
+            models=settings.openai_compat_models,
+            timeout=settings.request_timeout_seconds,
+        )
+    return providers
+
+
+def build_provider(settings: Settings) -> Provider:
+    """The default provider (``LFG_PROVIDER``)."""
+    return build_providers(settings)[settings.provider.value]
+
+
+def route_models(
+    book: PriceBook, providers: dict[str, Provider], default: Provider
+) -> dict[str, Provider]:
+    """Resolve each price book row to the provider that serves it (ADR-0011)."""
+    routes: dict[str, Provider] = {}
+    for model in book.models():
+        name = book.provider_for(model)
+        if name is not None and name not in providers:
+            log.warning(
+                "price book routes model %s to provider '%s', which is not configured; "
+                "using default '%s'",
+                model,
+                name,
+                default.name,
+            )
+        routes[model] = providers[name] if name in providers else default
+    return routes
 
 
 def load_policies(settings: Settings) -> PolicySet:
@@ -114,13 +158,27 @@ def create_app(
     keyring: KeyRing | None = None,
     ledger: Ledger | None = None,
     provider: Provider | None = None,
+    providers: dict[str, Provider] | None = None,
 ) -> FastAPI:
+    """``provider`` is the default provider; ``providers`` adds further ones by name. With
+    neither, every provider the settings describe is built and ``LFG_PROVIDER`` is the default."""
     settings = settings or Settings()
     price_book = price_book or PriceBook.from_yaml(settings.pricing_path)
     policies = policies or load_policies(settings)
     keyring = keyring or load_keyring(settings)
     ledger = ledger or Ledger(settings.database_url)
-    provider = provider or build_provider(settings)
+    providers = dict(providers or {})
+    if provider is not None:
+        providers.setdefault(provider.name, provider)
+    if not providers:
+        providers = build_providers(settings)
+    default_name = provider.name if provider is not None else settings.provider.value
+    if default_name not in providers:
+        raise RuntimeError(
+            f"default provider '{default_name}' is not configured; have {sorted(providers)}"
+        )
+    default_provider = providers[default_name]
+    routes = route_models(price_book, providers, default_provider)
     engine = PolicyEngine(policies, ledger)
     metrics = Metrics()
     telemetry = Telemetry(settings.otel_enabled, settings.otel_service_name)
@@ -133,12 +191,15 @@ def create_app(
         app.state.policy_engine = engine
         app.state.keyring = keyring
         app.state.ledger = ledger
-        app.state.provider = provider
+        app.state.provider = default_provider
+        app.state.providers = providers
+        app.state.routes = routes
         app.state.metrics = metrics
         app.state.telemetry = telemetry
         log.info(
-            "gateway up provider=%s auth=%s price_book=%s policies=%s keys=%d otel=%s",
-            provider.name,
+            "gateway up providers=%s default=%s auth=%s price_book=%s policies=%s keys=%d otel=%s",
+            ",".join(sorted(providers)),
+            default_provider.name,
             settings.auth_mode,
             price_book.version,
             policies.version,
@@ -148,7 +209,8 @@ def create_app(
         try:
             yield
         finally:
-            await provider.aclose()
+            for p in providers.values():
+                await p.aclose()
             telemetry.shutdown()
 
     app = FastAPI(
@@ -161,6 +223,17 @@ def create_app(
 
     @app.exception_handler(ProviderError)
     async def _provider_error(_: Request, exc: ProviderError) -> JSONResponse:
+        if exc.status_code == 429:
+            # The provider is throttling us: tell the client to back off, not that we are broken.
+            return JSONResponse(
+                status_code=429,
+                headers={"Retry-After": exc.retry_after or "1"},
+                content={
+                    "error": "upstream_rate_limited",
+                    "provider": exc.provider,
+                    "detail": str(exc),
+                },
+            )
         return JSONResponse(
             status_code=502,
             content={"error": "upstream_error", "provider": exc.provider, "detail": str(exc)},
@@ -176,7 +249,7 @@ def create_app(
         book: PriceBook = state.price_book
         engine: PolicyEngine = state.policy_engine
         ledger: Ledger = state.ledger
-        provider: Provider = state.provider
+        provider: Provider = state.routes.get(req.model, state.provider)
         metrics: Metrics = state.metrics
         telemetry: Telemetry = state.telemetry
 
@@ -232,17 +305,21 @@ def create_app(
             result = await provider.chat(
                 req.model, messages, temperature=req.temperature, max_tokens=req.max_tokens
             )
-        except Exception:
+        except Exception as exc:
             if decision.reserved_usd:
                 ledger.release(attr.team, decision.reserved_usd)
-            metrics.requests.labels(attr.team, req.model, "upstream_error").inc()
+            throttled = isinstance(exc, ProviderError) and exc.status_code == 429
+            outcome = "upstream_rate_limited" if throttled else "upstream_error"
+            metrics.requests.labels(attr.team, req.model, outcome).inc()
             raise
         metrics.upstream_latency.labels(provider.name, req.model).observe(
             time.perf_counter() - started
         )
 
         # 4. Price, record and settle the reservation in one transaction.
-        cost = book.cost(req.model, result.input_tokens, result.output_tokens)
+        cost = book.cost(
+            req.model, result.input_tokens, result.output_tokens, result.cached_input_tokens
+        )
         request_id = f"gw-{uuid.uuid4().hex}"
         ledger.record(
             CostEntry(
@@ -254,6 +331,7 @@ def create_app(
                 model=req.model,
                 input_tokens=result.input_tokens,
                 output_tokens=result.output_tokens,
+                cached_input_tokens=result.cached_input_tokens,
                 cost_usd=cost,
                 price_book_version=book.version,
                 key_id=attr.key_id,
@@ -293,6 +371,11 @@ def create_app(
                 prompt_tokens=result.input_tokens,
                 completion_tokens=result.output_tokens,
                 total_tokens=result.input_tokens + result.output_tokens,
+                prompt_tokens_details=(
+                    PromptTokensDetails(cached_tokens=result.cached_input_tokens)
+                    if result.cached_input_tokens
+                    else None
+                ),
             ),
             x_finops=FinOpsEnvelope(
                 cost_usd=money(cost),
@@ -365,9 +448,12 @@ def create_app(
     @app.get("/v1/models")
     async def list_models(state: Annotated[Any, Depends(_state)]) -> dict[str, object]:
         book: PriceBook = state.price_book
+        routes: dict[str, Provider] = state.routes
         return {
             "object": "list",
-            "data": [{"id": m, "object": "model", "owned_by": "gateway"} for m in book.models()],
+            "data": [
+                {"id": m, "object": "model", "owned_by": routes[m].name} for m in book.models()
+            ],
         }
 
     @app.get("/metrics", include_in_schema=False)
@@ -382,6 +468,8 @@ def create_app(
             "status": "ok",
             "version": __version__,
             "auth_mode": state.settings.auth_mode,
+            "providers": ",".join(sorted(state.providers)),
+            "default_provider": state.provider.name,
             "price_book": state.price_book.version,
             "policies": state.policy_engine.version,
         }

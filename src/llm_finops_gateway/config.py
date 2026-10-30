@@ -17,12 +17,19 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class ProviderKind(StrEnum):
     OLLAMA = "ollama"
     AZURE_OPENAI = "azure_openai"
+    OPENAI_COMPAT = "openai_compat"
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="LFG_", env_file=".env", extra="ignore")
 
-    provider: ProviderKind = ProviderKind.OLLAMA
+    provider: ProviderKind = Field(
+        default=ProviderKind.OLLAMA,
+        description=(
+            "Default provider for models whose price book row has no 'provider'. Every provider "
+            "whose settings are present is available at the same time (ADR-0011)."
+        ),
+    )
 
     # Ollama
     ollama_base_url: str = "http://localhost:11434"
@@ -38,6 +45,29 @@ class Settings(BaseSettings):
         description=(
             "Optional map of model name -> deployment name. "
             "When a model is not listed, the model name is used as the deployment name."
+        ),
+    )
+
+    # Any OpenAI-compatible server (required when provider == openai_compat, ADR-0010)
+    openai_compat_base_url: str | None = Field(
+        default=None,
+        description=(
+            "Base URL up to and including the API prefix, e.g. "
+            "https://<resource>.openai.azure.com/openai/v1 or http://vllm:8000/v1"
+        ),
+    )
+    openai_compat_api_key: SecretStr | None = Field(
+        default=None,
+        description="Sent as 'Authorization: Bearer'. Omit for servers on a trusted network.",
+    )
+    openai_compat_headers: dict[str, str] = Field(
+        default_factory=dict, description="Extra request headers (JSON map)."
+    )
+    openai_compat_models: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Optional map of model name -> upstream model or deployment name. "
+            "When a model is not listed, the model name is sent as-is."
         ),
     )
 
@@ -82,4 +112,10 @@ class Settings(BaseSettings):
             ]
             if missing:
                 raise ValueError(f"provider=azure_openai requires {missing}")
+        return self
+
+    @model_validator(mode="after")
+    def _openai_compat_requires_base_url(self) -> Settings:
+        if self.provider is ProviderKind.OPENAI_COMPAT and self.openai_compat_base_url is None:
+            raise ValueError("provider=openai_compat requires ['LFG_OPENAI_COMPAT_BASE_URL']")
         return self

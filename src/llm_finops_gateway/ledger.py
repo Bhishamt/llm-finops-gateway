@@ -52,6 +52,7 @@ class CostRecord(Base):
     model: Mapped[str] = mapped_column(String(64), index=True)
     input_tokens: Mapped[int] = mapped_column(Integer)
     output_tokens: Mapped[int] = mapped_column(Integer)
+    cached_input_tokens: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     cost_usd: Mapped[Decimal] = mapped_column(Numeric(14, 8))
     price_book_version: Mapped[str] = mapped_column(String(32))
 
@@ -81,6 +82,7 @@ class CostEntry:
     price_book_version: str
     ts: datetime | None = None  # defaults to now (UTC); explicit only for backfills and tests
     key_id: str | None = None
+    cached_input_tokens: int = 0
 
 
 @dataclass(frozen=True)
@@ -137,6 +139,7 @@ class Ledger:
                     model=entry.model,
                     input_tokens=entry.input_tokens,
                     output_tokens=entry.output_tokens,
+                    cached_input_tokens=entry.cached_input_tokens,
                     cost_usd=entry.cost_usd,
                     price_book_version=entry.price_book_version,
                 )

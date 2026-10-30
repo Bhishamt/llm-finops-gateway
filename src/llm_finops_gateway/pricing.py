@@ -19,6 +19,8 @@ import yaml
 class ModelPrice:
     input_per_million: Decimal
     output_per_million: Decimal
+    cached_input_per_million: Decimal | None = None  # None: cached tokens cost the input price
+    provider: str | None = None  # adapter that serves the model; None: the default provider
 
 
 class UnknownModelError(KeyError):
@@ -64,9 +66,13 @@ class PriceBook:
         for name, spec in raw["models"].items():
             if not isinstance(spec, dict) or "input" not in spec or "output" not in spec:
                 raise PriceBookError(f"{path}: model '{name}' needs 'input' and 'output'")
+            cached = spec.get("cached_input")
+            provider = spec.get("provider")
             prices[str(name)] = ModelPrice(
                 input_per_million=Decimal(str(spec["input"])),
                 output_per_million=Decimal(str(spec["output"])),
+                cached_input_per_million=None if cached is None else Decimal(str(cached)),
+                provider=None if provider is None else str(provider),
             )
         return cls(prices, version=str(raw["version"]), currency=str(raw["currency"]))
 
@@ -76,15 +82,34 @@ class PriceBook:
     def has(self, model: str) -> bool:
         return model in self._prices
 
-    def cost(self, model: str, input_tokens: int, output_tokens: int) -> Decimal:
-        if input_tokens < 0 or output_tokens < 0:
+    def provider_for(self, model: str) -> str | None:
+        """Provider named by the price book row, or None for the default (ADR-0011)."""
+        try:
+            return self._prices[model].provider
+        except KeyError as exc:
+            raise UnknownModelError(model) from exc
+
+    def cost(
+        self, model: str, input_tokens: int, output_tokens: int, cached_input_tokens: int = 0
+    ) -> Decimal:
+        """Cost of one call. ``cached_input_tokens`` is the part of ``input_tokens`` the provider
+        served from its prompt cache; it is billed at ``cached_input`` when the model has one."""
+        if input_tokens < 0 or output_tokens < 0 or cached_input_tokens < 0:
             raise ValueError("token counts must be non-negative")
+        if cached_input_tokens > input_tokens:
+            raise ValueError("cached_input_tokens cannot exceed input_tokens")
         try:
             price = self._prices[model]
         except KeyError as exc:
             raise UnknownModelError(model) from exc
+        cached_price = (
+            price.input_per_million
+            if price.cached_input_per_million is None
+            else price.cached_input_per_million
+        )
         per_million = Decimal(1_000_000)
         return (
-            Decimal(input_tokens) * price.input_per_million
+            Decimal(input_tokens - cached_input_tokens) * price.input_per_million
+            + Decimal(cached_input_tokens) * cached_price
             + Decimal(output_tokens) * price.output_per_million
         ) / per_million

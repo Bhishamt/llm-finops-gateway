@@ -176,15 +176,16 @@ Follow `docs/azure-setup.md` to create the resource and `.env`. Then:
 
 ```bash
 llm-finops-gateway --port 8080
-python demo/run_demo.py --mode live --url http://localhost:8080 --model gpt-4o-mini --calls 30
+python demo/run_demo.py --mode live --url http://localhost:8080 --model gpt-4.1-mini --calls 30
 ```
 
 | # | Check | Expected |
 | - | ----- | -------- |
-| 4.1 | Live report | ~30 calls, non-zero `spend USD`, teams priced with `gpt-4o-mini` |
-| 4.2 | One `x_finops.cost_usd` by hand | `(prompt_tokens * 0.15 + completion_tokens * 0.60) / 1_000_000` matches to the last digit |
+| 4.1 | Live report | ~30 calls, non-zero `spend USD`, teams priced with `gpt-4.1-mini` (`gpt-4o-mini` can no longer be deployed, see `docs/azure-setup.md`) |
+| 4.2 | One `x_finops.cost_usd` by hand | `(prompt_tokens * 0.40 + completion_tokens * 1.60) / 1_000_000` matches to the last digit |
 | 4.3 | `GET /v1/finops/summary` | sums equal the report |
-| 4.4 | Wrong deployment mapping (`LFG_AZURE_OPENAI_DEPLOYMENTS={"gpt-4o-mini":"nope"}`) | HTTP 502, `upstream_error`, provider `azure_openai`, no ledger row written |
+| 4.4 | Wrong deployment mapping (`LFG_AZURE_OPENAI_DEPLOYMENTS={"gpt-4.1-mini":"nope"}`) | HTTP 502, `upstream_error`, provider `azure_openai`, no ledger row written |
+| 4.6 | Same resource through the v1 endpoint: `LFG_PROVIDER=openai_compat`, base URL `.../openai/v1` | HTTP 200, `x_finops.provider: openai_compat`, cost matches 4.2 |
 | 4.5 | Azure Cost Management, next day | the resource's token charges equal the gateway total to the cent (pay-as-you-go) |
 
 - [ ] 4.1 to 4.5 pass. Capture: 4.1 table with real dollars, 4.5 screenshot of Cost Management
@@ -221,9 +222,9 @@ docker compose down
 | 3 Budget lifecycle | pass (3.1, 3.2) | 2026-10-28 | 86.7 % warn with header and log line; 100 % block with structured 403; 3.3 to 3.5 not run |
 | 3b Team keys | pass | 2026-10-28 | 401 missing_api_key with `WWW-Authenticate`, 401 invalid_api_key, 200 with `key_id`, 403 team_mismatch |
 | 3c Rate limit | pass | 2026-10-28 | `403 403 403 429`, `Retry-After: 60`, log `reason=rate_limited rpm=3` |
-| 3d Tracing | not run | | |
-| 4 Azure OpenAI | not run | | next session; needs a subscription with Azure OpenAI quota |
-| 5 Docker | not run | | |
+| 3d Tracing | pass | 2026-10-30 | Jaeger 2.5.0 via OTLP/HTTP on 4318; `POST /v1/chat/completions` spans carry `finops.team`, `finops.project`, `finops.use_case`, `finops.model`, `finops.cost_usd`, `finops.input_tokens`, `finops.output_tokens`, `finops.request_id`; `/healthz` not traced |
+| 4 Azure OpenAI | pass (4.1 to 4.4, 4.6) | 2026-10-30 | `gpt-4.1-mini-dev` in Sweden Central; 30-call run then an 800-call run (713 sent, 662 served, 0.0576 USD) with a policy copy that allows the model for every team; ledger total for the day 674 rows, 12,214 input and 33,448 output tokens, 0.0584024 USD; cost by hand matches to the last digit; 502 `DeploymentNotFound` with 0 ledger rows; v1 endpoint via `openai_compat` ok. 4.5 Cost Management pending (data lags 8 to 24 h) |
+| 5 Docker | pass (image) | 2026-10-30 | image builds, runs as uid 10001, healthcheck `healthy`, live call through the container ok. `docker compose config` fails on Compose 2.23 (`env_file` long syntax needs 2.24+); compose with Ollama not brought up |
 | 6 Limitations | confirmed by tests | 2026-10-28 | estimate-based rejection and per-instance rate limits covered by unit tests |
 
 ## Observations from the 2026-10-28 run (fixed in this release)
@@ -239,3 +240,31 @@ docker compose down
   desktop app requires macOS 14; macOS 26 installed fine. The first `ollama pull` stalled on a
   flaky network with a DNS failure to the Cloudflare R2 blob host; a second attempt on another
   network completed.
+
+## Observations from the 2026-10-30 Azure run
+
+- `gpt-4o-mini` version 2024-07-18 is deprecated for new deployments since 2026-03-31; the
+  resource was created with `gpt-4.1-mini` 2025-04-14 instead, which is already in the price
+  book. The setup guide and this plan now use it.
+- With the deployment at 10K tokens per minute one of the demo's 30 calls got an Azure 429
+  (token rate limit), which the gateway reports as HTTP 502 `upstream_error` and does not
+  record. Capacity was raised to 50K; the setup guide says so. Mapping upstream 429 to 429
+  with `Retry-After` instead of 502 is a candidate improvement.
+- The demo's `--model` override sends the same model to every team, so `research` and
+  `customer-support`, whose allow-lists name `gpt-4o-mini` only, were rejected with 403
+  `model_not_allowed`. Correct behaviour, but for a cost-focused live run either widen those
+  lists in a copy of the policy file or accept the rejections.
+- The spend of a 30-call run (0.0007 USD) rounds to 0.00 in Azure Cost Management. For a
+  reconciliation to the cent, send a few hundred calls (300 calls are about 0.01 USD) or
+  longer prompts before comparing.
+- `docker-compose.yml` uses the `env_file: [{path: .env, required: false}]` form, which needs
+  Docker Compose 2.24 or newer; Docker Desktop 4.25 (Compose 2.23) rejects the file. The README
+  states the minimum version. The image itself was tested with `docker run --env-file .env`.
+- In the 800-call run 87 calls (11 %) were throttled by Azure even at 50K tokens per minute,
+  because the deployment's requests-per-minute allowance is derived from the token capacity
+  (6 RPM per 1K TPM) and the demo sends calls back to back. These are now returned as `429
+  upstream_rate_limited` with the provider's `Retry-After` instead of 502; the gateway's own
+  per-team rate limit is the right tool to stay under the deployment's allowance.
+- For the Cost Management reconciliation: `azure-live.db` holds 674 rows / 0.0584024 USD for
+  2026-10-30. Four further calls were made outside that ledger (v1 endpoint smoke, two tracing
+  calls, one Docker call), about 0.00005 USD, so the Azure figure should read 0.06 USD.
