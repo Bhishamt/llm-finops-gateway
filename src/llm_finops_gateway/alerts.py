@@ -30,8 +30,10 @@ class Alerter:
         currency: str = "USD",
         timeout: float = 5.0,
         client: httpx.AsyncClient | None = None,
+        fmt: str = "slack",
     ) -> None:
         self._url = url
+        self._format = fmt
         self._cooldown = cooldown_seconds
         self._currency = currency
         self._timeout = timeout
@@ -90,7 +92,59 @@ class Alerter:
             message=detail[:300],
         )
 
+    async def send_test(self) -> bool:
+        """Send one sample ``budget_warn`` now and wait for it (``alerts test``)."""
+        payload = self._payload(
+            "budget_warn",
+            f":warning: LLM budget warning (test): team example has used 82.4 % of 500 "
+            f"{self._currency} this month",
+            team="example",
+            level="warn",
+            used_pct="82.4",
+            spent="412.10",
+            limit="500",
+            message="test event from `llm-finops-gateway alerts test`",
+        )
+        before = self.sent
+        await self._post(payload)
+        return self.sent == before + 1
+
     # ---- plumbing ------------------------------------------------------------------------
+
+    def _payload(self, event: str, text: str, **fields: Any) -> dict[str, Any]:
+        """Slack (and generic JSON): a ``text`` line plus flat fields. Teams (Workflows
+        webhook): an Adaptive Card, which is the only shape it renders."""
+        if self._format != "teams":
+            return {"text": text, "event": event, "source": "llm-finops-gateway", **fields}
+        facts = [{"title": k, "value": str(v)} for k, v in fields.items() if k != "message"]
+        body: list[dict[str, Any]] = [
+            {"type": "TextBlock", "text": text, "wrap": True, "weight": "Bolder"},
+            {"type": "FactSet", "facts": facts},
+        ]
+        if fields.get("message"):
+            body.append(
+                {
+                    "type": "TextBlock",
+                    "text": str(fields["message"]),
+                    "wrap": True,
+                    "isSubtle": True,
+                }
+            )
+        return {
+            "type": "message",
+            "attachments": [
+                {
+                    "contentType": "application/vnd.microsoft.card.adaptive",
+                    "contentUrl": None,
+                    "content": {
+                        "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+                        "type": "AdaptiveCard",
+                        "version": "1.4",
+                        "body": body,
+                    },
+                }
+            ],
+        }
 
     def _emit(self, key: str, event: str, text: str, **fields: Any) -> None:
         if not self._url:
@@ -100,7 +154,7 @@ class Alerter:
         if last is not None and now - last < self._cooldown:
             return
         self._last_sent[key] = now
-        payload = {"text": text, "event": event, "source": "llm-finops-gateway", **fields}
+        payload = self._payload(event, text, **fields)
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:  # no loop (unit code outside the server): send nothing

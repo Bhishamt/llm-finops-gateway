@@ -104,6 +104,11 @@ class Settings(BaseSettings):
     alert_cooldown_seconds: int = Field(
         default=3600, ge=0, description="Same event for the same team/provider at most this often."
     )
+    alert_format: Literal["slack", "teams"] = Field(
+        default="slack",
+        description="slack: text plus flat JSON fields (also fine for generic receivers); "
+        "teams: Adaptive Card for a Teams Workflows webhook.",
+    )
 
     # Report page: extra display currencies as units per 1 price-book unit, e.g. {"EUR": 0.88}
     report_rates: dict[str, float] = Field(

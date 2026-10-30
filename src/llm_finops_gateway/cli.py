@@ -5,6 +5,7 @@ llm-finops-gateway keys new --team platform --id platform-copilot [--project cop
 llm-finops-gateway keys hash lfg_...
 llm-finops-gateway keys check config/keys.yaml
 llm-finops-gateway pricing sync --region swedencentral [--deployment global] [--write]
+llm-finops-gateway alerts test            # one sample event to LFG_ALERT_WEBHOOK_URL
 """
 
 from __future__ import annotations
@@ -91,6 +92,25 @@ def _pricing_sync(args: argparse.Namespace) -> None:
     print(f"\n{args.path} matches the {args.region} retail list ({args.deployment})")
 
 
+def _alerts_test(args: argparse.Namespace) -> None:
+    import asyncio
+
+    from .alerts import Alerter
+    from .config import Settings
+
+    settings = Settings()
+    if settings.alert_webhook_url is None:
+        print("LFG_ALERT_WEBHOOK_URL is not set; nothing to test", file=sys.stderr)
+        sys.exit(2)
+    alerter = Alerter(
+        settings.alert_webhook_url.get_secret_value(), cooldown_seconds=0, fmt=settings.alert_format
+    )
+    ok = asyncio.run(alerter.send_test())
+    outcome = "delivered" if ok else "NOT delivered (see the log line above)"
+    print(f"format {settings.alert_format}: {outcome}")
+    sys.exit(0 if ok else 1)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="llm-finops-gateway")
     sub = parser.add_subparsers(dest="command")
@@ -144,6 +164,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     s.add_argument("--write", action="store_true", help="rewrite differing prices in place")
     s.set_defaults(func=_pricing_sync)
+
+    alerts = sub.add_parser("alerts", help="webhook alerts (ADR-0017)")
+    asub = alerts.add_subparsers(dest="alerts_command", required=True)
+    t = asub.add_parser("test", help="send one sample budget_warn event to the configured webhook")
+    t.set_defaults(func=_alerts_test)
 
     return parser
 

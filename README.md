@@ -350,6 +350,7 @@ Environment variables (prefix `LFG_`; a `.env` file is read if present):
 | `LFG_REPORT_RATES`              | `{}`                      | display currencies on `/finops` as units per 1 book unit, e.g. `{"EUR": 0.88}` |
 | `LFG_ALERT_WEBHOOK_URL`         |                           | Slack/Teams incoming webhook or any JSON endpoint; empty = off |
 | `LFG_ALERT_COOLDOWN_SECONDS`    | `3600`                    | same event per team/provider at most this often |
+| `LFG_ALERT_FORMAT`              | `slack`                   | `slack` (text + JSON fields) or `teams` (Adaptive Card) |
 | `LFG_METRICS_ENABLED`           | `true`                    | serve `/metrics`                        |
 | `LFG_OTEL_ENABLED`              | `false`                   | needs `pip install ".[otel]"`; exporter via `OTEL_EXPORTER_OTLP_*` |
 | `LFG_OTEL_SERVICE_NAME`         | `llm-finops-gateway`      |                                         |
@@ -374,9 +375,12 @@ LFG_ALERT_WEBHOOK_URL=https://hooks.slack.com/services/T000/B000/xxxx
 LFG_ALERT_COOLDOWN_SECONDS=3600
 ```
 
-The gateway posts one JSON event (`text` plus structured fields) when a team crosses its
-warning threshold (`budget_warn`), when a call is refused for budget (`budget_block`), and when
-the provider fails (`upstream_error`, `upstream_rate_limited`). The same event for the same
+The gateway posts one event when a team crosses its warning threshold (`budget_warn`), when a
+call is refused for budget (`budget_block`), and when the provider fails (`upstream_error`,
+`upstream_rate_limited`). `LFG_ALERT_FORMAT=slack` (default) sends `text` plus flat JSON
+fields, which a Slack incoming webhook renders and any JSON receiver can parse;
+`LFG_ALERT_FORMAT=teams` sends an Adaptive Card for a Teams Workflows webhook.
+`llm-finops-gateway alerts test` sends one sample event so you can check the channel. The same event for the same
 team or provider is sent once per cooldown. Delivery runs in the background and never delays
 or fails a request (ADR-0017). Thresholds and routing for a monitoring stack belong to the
 Prometheus metrics below.
@@ -387,7 +391,22 @@ Prometheus metrics below.
 for the `/metrics` endpoint: spend, calls served and rejected, budget used per team with the
 warn and block thresholds, spend rate by team, requests by outcome, tokens, upstream latency
 p50/p95 by provider, and a spend table by team, project and model. Import it into Grafana or
-Azure Managed Grafana and pick the Prometheus data source that scrapes the gateway.
+Azure Managed Grafana and pick the Prometheus data source that scrapes the gateway, or run it
+locally against a gateway on port 8080:
+
+```bash
+docker compose -f docker-compose.observability.yml up -d   # Prometheus + Grafana, dashboard provisioned
+open http://localhost:3000                                 # admin / admin
+```
+
+Where each view lives in Azure: the report page is served by the gateway itself, so it is the
+Container App's URL plus `/finops`, behind the gateway's key auth and whatever sits in front
+(Container Apps authentication with Entra ID, or APIM); finance pulls CSV or JSON into Power
+BI, or reads the ledger database; operations scrape `/metrics` with Azure Monitor managed
+Prometheus and import this dashboard into Azure Managed Grafana; alerts go to Slack or Teams
+through the webhook, or come from Azure Monitor alert rules on the same metrics. Azure Cost
+Management only ever sees the Azure OpenAI resource's bill; the team dimension exists because
+of the gateway. Details in [docs/reporting.md](docs/reporting.md).
 
 [`examples/`](examples/) has the same four calls in Python and TypeScript with the official
 OpenAI SDKs: a completion with the `x_finops` block, a stream with the cost in the final chunk,

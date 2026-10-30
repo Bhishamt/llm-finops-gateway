@@ -173,7 +173,11 @@ h1 { font-size: 20px; margin: 0 0 4px; } h2 { font-size: 16px; margin: 28px 0 8p
 .meta { color: var(--muted); margin-bottom: 12px; } .meta span { margin-right: 16px; }
 .meta a { color: inherit; }
 .toolbar { display: flex; flex-wrap: wrap; gap: 16px 24px; align-items: center; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; margin: 12px 0 4px; }
-.toolbar label { margin-right: 6px; white-space: nowrap; } .toolbar .teams label { margin-right: 10px; }
+.toolbar label { margin-right: 6px; white-space: nowrap; }
+.dropdown { position: relative; display: inline-block; }
+.dropdown button { font: inherit; padding: 4px 10px; cursor: pointer; }
+.dropdown .menu { position: absolute; z-index: 10; top: 110%; left: 0; min-width: 240px; max-height: 320px; overflow: auto; background: Canvas; color: CanvasText; border: 1px solid #999; border-radius: 6px; padding: 8px 10px; box-shadow: 0 4px 16px rgba(0,0,0,.2); }
+.dropdown .menu label { display: block; margin: 2px 0; white-space: nowrap; } .dropdown .menu hr { border: 0; border-top: 1px solid var(--line); margin: 6px 0; }
 table { border-collapse: collapse; width: 100%; } th, td { padding: 6px 10px; text-align: left; vertical-align: top; }
 th { border-bottom: 2px solid #999; font-weight: 600; } td { border-bottom: 1px solid var(--line); }
 th[data-key] { cursor: pointer; user-select: none; } th[data-key]:after { content: " \\2195"; color: var(--muted); font-size: 11px; }
@@ -213,21 +217,31 @@ _SCRIPT = r"""
   if (S.currency && rates[S.currency] !== undefined) sel.value = S.currency;
   sel.addEventListener('change', applyCurrency);
 
-  // ---- team selector: "all" or any subset; both tables and the total follow ----
+  // ---- team selector: a dropdown with "all teams" and one checkbox per team ----
   var boxes = Array.prototype.slice.call(document.querySelectorAll('input.team'));
   var all = document.getElementById('team-all');
+  var btn = document.getElementById('team-btn'), menu = document.getElementById('team-menu');
   function selected() { return boxes.filter(function (b) { return b.checked; }).map(function (b) { return b.value; }); }
+  function label(on) {
+    if (!boxes.length || on.length === boxes.length) return 'team: all teams';
+    if (on.length === 0) return 'team: none';
+    return 'team: ' + (on.length <= 2 ? on.join(', ') : on.length + ' of ' + boxes.length);
+  }
   function applyTeams() {
     var on = selected();
     document.querySelectorAll('tr[data-team]').forEach(function (tr) {
       tr.classList.toggle('team-hidden', on.indexOf(tr.getAttribute('data-team')) < 0);
     });
     all.checked = boxes.length === 0 || on.length === boxes.length;
+    btn.textContent = label(on) + ' \u25BE';
     S.teams = on; save(); applyFilters();
   }
   if (Array.isArray(S.teams) && boxes.length) boxes.forEach(function (b) { b.checked = S.teams.indexOf(b.value) >= 0; });
   all.addEventListener('change', function () { boxes.forEach(function (b) { b.checked = all.checked; }); applyTeams(); });
   boxes.forEach(function (b) { b.addEventListener('change', applyTeams); });
+  btn.addEventListener('click', function (ev) { ev.stopPropagation(); menu.hidden = !menu.hidden; });
+  menu.addEventListener('click', function (ev) { ev.stopPropagation(); });
+  document.addEventListener('click', function () { menu.hidden = true; });
 
   // ---- text filter per table, and the total of the visible chargeback rows ----
   function applyFilters() {
@@ -250,26 +264,37 @@ _SCRIPT = r"""
   }
   document.querySelectorAll('input.filter').forEach(function (inp) { inp.addEventListener('input', applyFilters); });
 
-  // ---- sorting: click a header; numeric cells sort by data-amt / data-v or their number ----
+  // ---- sorting: click a header; numeric cells sort by data-amt / data-v or their number.
+  //      The choice is kept per table, so a reload only refreshes the data. ----
+  function sortTable(table, idx, asc) {
+    var tbody = table.querySelector('tbody'), ths = table.querySelectorAll('thead th');
+    ths.forEach(function (h) { h.classList.remove('asc', 'desc'); });
+    if (ths[idx]) ths[idx].classList.add(asc ? 'asc' : 'desc');
+    var rows = Array.prototype.slice.call(tbody.querySelectorAll('tr'));
+    rows.sort(function (a, b) {
+      var x = a.children[idx], y = b.children[idx];
+      if (!x || !y) return 0;
+      var xv = x.getAttribute('data-amt') || x.getAttribute('data-v') || x.textContent.trim();
+      var yv = y.getAttribute('data-amt') || y.getAttribute('data-v') || y.textContent.trim();
+      var xn = parseFloat(xv), yn = parseFloat(yv);
+      var r = (!isNaN(xn) && !isNaN(yn)) ? xn - yn : xv.localeCompare(yv);
+      return asc ? r : -r;
+    });
+    rows.forEach(function (r) { tbody.appendChild(r); });
+  }
+  S.sort = S.sort || {};
   document.querySelectorAll('table.sortable th[data-key]').forEach(function (th) {
     th.addEventListener('click', function () {
-      var table = th.closest('table'), tbody = table.querySelector('tbody');
+      var table = th.closest('table');
       var idx = Array.prototype.indexOf.call(th.parentNode.children, th);
       var asc = !th.classList.contains('asc');
-      table.querySelectorAll('th').forEach(function (h) { h.classList.remove('asc', 'desc'); });
-      th.classList.add(asc ? 'asc' : 'desc');
-      var rows = Array.prototype.slice.call(tbody.querySelectorAll('tr'));
-      rows.sort(function (a, b) {
-        var x = a.children[idx], y = b.children[idx];
-        if (!x || !y) return 0;
-        var xv = x.getAttribute('data-amt') || x.getAttribute('data-v') || x.textContent.trim();
-        var yv = y.getAttribute('data-amt') || y.getAttribute('data-v') || y.textContent.trim();
-        var xn = parseFloat(xv), yn = parseFloat(yv);
-        var r = (!isNaN(xn) && !isNaN(yn)) ? xn - yn : xv.localeCompare(yv);
-        return asc ? r : -r;
-      });
-      rows.forEach(function (r) { tbody.appendChild(r); });
+      sortTable(table, idx, asc);
+      S.sort[table.id] = { idx: idx, asc: asc }; save();
     });
+  });
+  Object.keys(S.sort).forEach(function (id) {
+    var table = document.getElementById(id), st = S.sort[id];
+    if (table && st) sortTable(table, st.idx, st.asc);
   });
 
   // ---- policy and price book: the version links open the details sections ----
@@ -398,11 +423,12 @@ def render_report(ctx: ReportContext) -> str:
 <span>price book <a href="#pricebook" class="open" data-target="pricebook">{_e(ctx.price_book_version)}</a> ({_e(ctx.currency)})</span>
 <span>policies <a href="#policy" class="open" data-target="policy">{_e(ctx.policy_version)}</a></span>
 <span>providers {_e(ctx.providers)}</span><span>gateway {_e(ctx.version)}</span>
-<span><a href="/finops">reload</a></span> {logout}</div>
+<span><a href="/finops">reload data</a></span> {logout}</div>
 
 <div class="toolbar">
   <div><label for="currency">currency</label><select id="currency">{currencies}</select> {rate_note}</div>
-  <div class="teams"><label><input type="checkbox" id="team-all" checked> <b>all teams</b></label>{team_boxes}</div>
+  <div class="dropdown"><button type="button" id="team-btn">team: all teams &#9662;</button>
+    <div class="menu" id="team-menu" hidden><label><input type="checkbox" id="team-all" checked> <b>all teams</b></label><hr>{team_boxes}</div></div>
 </div>
 <script type="application/json" id="rates">{json.dumps(rates)}</script>
 
@@ -429,7 +455,7 @@ def render_report(ctx: ReportContext) -> str:
 </details>
 
 <footer>Same data as JSON: <code>/v1/finops/summary</code>, <code>/v1/finops/budgets</code>;
-as CSV for Excel or Power BI: <code>/v1/finops/summary.csv</code>. Click a column header to sort; selections are kept in this browser.</footer>
+as CSV for Excel or Power BI: <code>/v1/finops/summary.csv</code>. Click a column header to sort; sort order, team selection, filters and currency are kept in this browser across reloads.</footer>
 <script>{_SCRIPT}</script>
 </body></html>
 """

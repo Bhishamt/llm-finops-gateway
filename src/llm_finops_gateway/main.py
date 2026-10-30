@@ -245,6 +245,7 @@ def create_app(
         settings.alert_webhook_url.get_secret_value() if settings.alert_webhook_url else None,
         cooldown_seconds=settings.alert_cooldown_seconds,
         currency=price_book.currency,
+        fmt=settings.alert_format,
     )
 
     @asynccontextmanager
