@@ -54,6 +54,7 @@ A rendered version of this flow is in `images/architecture.svg`.
 | `providers/openai_compat.py` | Adapter for any OpenAI Chat Completions server: Azure OpenAI v1, vLLM, LocalAI, OpenAI (ADR-0010) |
 | `pricing_sync.py`           | `pricing sync`: Azure Retail Prices meters matched to price book rows, report and in-place rewrite (ADR-0013) |
 | `report.py`                 | `/finops` HTML page, CSV summary, report access scope (ADR-0016) |
+| `alerts.py`                 | Webhook alerts for budget warn/block and upstream failures, cooldown, background delivery (ADR-0017) |
 | `main.py`                   | `create_app()` factory, endpoints, error handlers, model-to-provider routes (ADR-0004, 0011) |
 | `cli.py`                    | `llm-finops-gateway serve` and `keys new | hash | check`                |
 

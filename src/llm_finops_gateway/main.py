@@ -20,6 +20,7 @@ from fastapi import Depends, FastAPI, Form, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 
 from . import __version__
+from .alerts import Alerter
 from .attribution import Attribution, resolve_attribution
 from .auth import KeyRing
 from .config import ProviderKind, Settings
@@ -214,6 +215,7 @@ def create_app(
     ledger: Ledger | None = None,
     provider: Provider | None = None,
     providers: dict[str, Provider] | None = None,
+    alerter: Alerter | None = None,
 ) -> FastAPI:
     """``provider`` is the default provider; ``providers`` adds further ones by name. With
     neither, every provider the settings describe is built and ``LFG_PROVIDER`` is the default."""
@@ -237,6 +239,11 @@ def create_app(
     engine = PolicyEngine(policies, ledger)
     metrics = Metrics()
     telemetry = Telemetry(settings.otel_enabled, settings.otel_service_name)
+    alerter = alerter or Alerter(
+        settings.alert_webhook_url.get_secret_value() if settings.alert_webhook_url else None,
+        cooldown_seconds=settings.alert_cooldown_seconds,
+        currency=price_book.currency,
+    )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -252,7 +259,8 @@ def create_app(
         app.state.metrics = metrics
         app.state.telemetry = telemetry
         log.info(
-            "gateway up providers=%s default=%s auth=%s price_book=%s policies=%s keys=%d otel=%s",
+            "gateway up providers=%s default=%s auth=%s price_book=%s policies=%s keys=%d "
+            "otel=%s alerts=%s",
             ",".join(sorted(providers)),
             default_provider.name,
             settings.auth_mode,
@@ -260,12 +268,14 @@ def create_app(
             policies.version,
             len(keyring),
             telemetry.enabled,
+            alerter.enabled,
         )
         try:
             yield
         finally:
             for p in providers.values():
                 await p.aclose()
+            await alerter.aclose()
             telemetry.shutdown()
 
     app = FastAPI(
@@ -333,6 +343,8 @@ def create_app(
         if not decision.allowed:
             metrics.requests.labels(attr.team, req.model, decision.violation or "blocked").inc()
             telemetry.annotate(policy_violation=decision.violation or "")
+            if decision.violation == "budget_exceeded":
+                alerter.budget_block(attr.team, decision.budget, decision.message or "")
             detail: dict[str, Any] = {
                 "error": decision.violation,
                 "message": decision.message,
@@ -349,6 +361,9 @@ def create_app(
                 status_code = 429
                 headers["Retry-After"] = str(decision.retry_after_seconds or 1)
             raise HTTPException(status_code=status_code, detail=detail, headers=headers)
+
+        if decision.warnings and decision.budget is not None:
+            alerter.budget_warn(attr.team, decision.budget, decision.warnings[0])
 
         # 3. Upstream call; on failure give the reservation back.
         # Reasoning models (gpt-5, o-series) take max_completion_tokens and only the default
@@ -407,6 +422,7 @@ def create_app(
             throttled = isinstance(exc, ProviderError) and exc.status_code == 429
             outcome = "upstream_rate_limited" if throttled else "upstream_error"
             metrics.requests.labels(attr.team, req.model, outcome).inc()
+            alerter.upstream_failure(provider.name, outcome, req.model, str(exc))
             return outcome
 
         def envelope(cost: Decimal, status: BudgetStatus | None) -> FinOpsEnvelope:
