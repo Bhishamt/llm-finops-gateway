@@ -206,5 +206,9 @@ def test_cli_prints_table_and_exits_nonzero_on_drift(
     assert exc.value.code == 1
     out = capsys.readouterr().out
     assert "gpt-5-mini" in out and "differs" in out and "ambiguous" in out
-    main(["pricing", "sync", "--region", "swedencentral", "--path", str(path), "--write"])
+    # --write rewrites what it can; the ambiguous gpt-4o row still needs a human, so exit 1
+    with pytest.raises(SystemExit) as exc:
+        main(["pricing", "sync", "--region", "swedencentral", "--path", str(path), "--write"])
+    assert exc.value.code == 1
     assert "input: 0.25" in path.read_text()
+    assert "value(s) rewritten" in capsys.readouterr().out
