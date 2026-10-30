@@ -34,10 +34,11 @@ src/llm_finops_gateway/
   metrics.py       Prometheus; telemetry.py optional OTel ([otel] extra, finops.* span attrs)
   models.py        request/response models (OpenAI shape + x_finops block)
   cli.py           llm-finops-gateway serve | keys new|hash|check | pricing sync
+  report.py        /finops HTML page, summary CSV, report access scope (team key vs role finops, ADR-0016)
 config/            pricing.yaml, policies.yaml, keys.yaml (hashes only, repo copy is `keys: []`)
 demo/              run_demo.py (simulated or live), policies.yaml (tiny budgets), README.md
 docs/              architecture.md, deployment.md, azure-setup.md, testing-plan.md, comparison.md,
-                   first-publish.md, adr/0001..0015
+                   first-publish.md, adr/0001..0016
 tests/             one test module per source module, 117 tests, FakeProvider in conftest.py
 ```
 
@@ -71,8 +72,9 @@ tests/             one test module per source module, 117 tests, FakeProvider in
   usage chunk; the `x_finops` block is in the last SSE event. No usage -> billed at the
   estimate with `usage_estimated: true`; mid-stream failure -> reservation released, error
   event, no ledger row (ADR-0012).
-- Endpoints: `/v1/chat/completions`, `/v1/models`, `/v1/finops/summary`, `/v1/finops/budgets`,
-  `/metrics`, `/healthz`.
+- Endpoints: `/v1/chat/completions`, `/v1/models`, `/v1/finops/summary`, `/v1/finops/summary.csv`,
+  `/v1/finops/budgets`, `/finops` (HTML), `/metrics`, `/healthz`. Report views share one scope
+  rule: team key = own team, `role: finops` = all, 401 without a key in `api_key` mode.
 
 ## Working rules
 
@@ -101,7 +103,7 @@ Bias toward caution over speed; for trivial tasks use judgment.
 - `make check` must be green before any commit: ruff (lint + format), mypy `--strict` on
   `src` and `tests`, pytest. Pre-commit is installed by `make install`.
 - Every module has a test module; new behaviour comes with a test in the same change.
-- Every design decision gets an ADR in `docs/adr/` (next number: 0016). ADR-0009 (evaluation
+- Every design decision gets an ADR in `docs/adr/` (next number: 0017). ADR-0009 (evaluation
   replay) is Proposed, not implemented.
 - Decimal for money everywhere; never float.
 - Secrets only via env / `SecretStr`. Never commit a raw `lfg_` key, `.env`, `*.db`, `demo/out/`.

@@ -6,7 +6,8 @@
 # Validate:       llm-finops-gateway keys check
 #
 # Fields: id (label, appears in ledger/traces), team, sha256, optional projects (restrict),
-#         created, expires (YYYY-MM-DD), disabled.
+#         created, expires (YYYY-MM-DD), disabled, role (team, or finops: reads every
+#         team's reports on /finops and /v1/finops/*, ADR-0016).
 #
 # With no keys listed every request gets 401 in api_key mode. For local development without
 # keys set LFG_AUTH_MODE=headers.

@@ -20,6 +20,7 @@ immutable once accepted; a later ADR supersedes an earlier one rather than editi
 | [0013](0013-price-book-sync-not-live-lookup.md) | Price book sync from the Azure Retail Prices API, never a live lookup | Accepted |
 | [0014](0014-entra-id-auth-for-azure-openai.md) | Azure OpenAI with Entra ID: the gateway calls with its own identity | Accepted |
 | [0015](0015-openai-request-surface.md) | The accepted OpenAI request surface: pass through what we can price, reject the rest loudly | Accepted |
+| [0016](0016-report-page-and-scoped-access.md) | A built-in report page, and who may read what | Accepted |
 
 ## Template
 

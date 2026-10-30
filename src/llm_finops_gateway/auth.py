@@ -14,7 +14,7 @@ import secrets
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
@@ -36,6 +36,7 @@ class ApiKeySpec(BaseModel):
     created: date | None = None
     expires: date | None = None
     disabled: bool = False
+    role: Literal["team", "finops"] = "team"  # finops: may read every team's reports
 
 
 @dataclass(frozen=True)
@@ -45,6 +46,7 @@ class ApiKey:
     projects: tuple[str, ...] | None
     expires: date | None
     disabled: bool
+    role: str = "team"
 
     def allows_project(self, project: str) -> bool:
         return self.projects is None or project in self.projects
@@ -76,6 +78,7 @@ class KeyRing:
                 projects=tuple(spec.projects) if spec.projects is not None else None,
                 expires=spec.expires,
                 disabled=spec.disabled,
+                role=spec.role,
             )
         self.version = version
 

@@ -42,6 +42,8 @@ def _keys_new(args: argparse.Namespace) -> None:
         lines.append(f"    projects: [{', '.join(args.project)}]")
     if args.expires:
         lines.append(f"    expires: {args.expires}")
+    if args.role != "team":
+        lines.append(f"    role: {args.role}")
     print("# Give this key to the team. It is shown once and never stored by the gateway:")
     print(raw)
     print()
@@ -105,6 +107,12 @@ def build_parser() -> argparse.ArgumentParser:
     new.add_argument("--id", required=True, help="label for the key, e.g. platform-copilot")
     new.add_argument("--project", action="append", help="restrict to project (repeatable)")
     new.add_argument("--expires", help="YYYY-MM-DD")
+    new.add_argument(
+        "--role",
+        choices=["team", "finops"],
+        default="team",
+        help="finops: may read every team's reports (ADR-0016)",
+    )
     new.set_defaults(func=_keys_new)
 
     h = ksub.add_parser("hash", help="print the sha256 of a raw key")
