@@ -112,3 +112,32 @@ def test_gateway_alerts_on_upstream_failure(
 
     payload = json.loads(route.calls[0].request.content)
     assert payload["event"] == "upstream_rate_limited" and payload["provider"] == "fake"
+
+
+@respx.mock
+async def test_teams_format_is_an_adaptive_card_and_send_test_waits() -> None:
+    route = respx.post(HOOK).mock(return_value=httpx.Response(202))
+    alerter = Alerter(HOOK, cooldown_seconds=0, fmt="teams", currency="EUR")
+    assert await alerter.send_test() is True
+    import json
+
+    payload = json.loads(route.calls.last.request.content)
+    card = payload["attachments"][0]
+    assert payload["type"] == "message"
+    assert card["contentType"] == "application/vnd.microsoft.card.adaptive"
+    assert card["content"]["type"] == "AdaptiveCard"
+    assert "82.4 % of 500 EUR" in card["content"]["body"][0]["text"]
+    assert {"title": "team", "value": "example"} in card["content"]["body"][1]["facts"]
+
+
+@respx.mock
+def test_cli_alerts_test_reports_delivery(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from llm_finops_gateway.cli import main
+
+    respx.post(HOOK).mock(return_value=httpx.Response(200))
+    monkeypatch.setenv("LFG_ALERT_WEBHOOK_URL", HOOK)
+    with pytest.raises(SystemExit) as exc:
+        main(["alerts", "test"])
+    assert exc.value.code == 0 and "delivered" in capsys.readouterr().out

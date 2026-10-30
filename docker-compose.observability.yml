@@ -1,0 +1,36 @@
+# Local Prometheus + Grafana for the gateway's /metrics, with the dashboard provisioned.
+#
+#   docker compose -f docker-compose.observability.yml up -d
+#   open http://localhost:3000        (admin / admin), dashboard "LLM FinOps gateway"
+#
+# Prometheus scrapes a gateway running on the host at :8080 (host.docker.internal). Change
+# LFG_METRICS_TARGET to scrape a gateway elsewhere, e.g. gateway:8080 from docker-compose.yml.
+services:
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    ports: ["9090:9090"]
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  grafana:
+    image: grafana/grafana:12.2.0
+    ports: ["3000:3000"]
+    depends_on: [prometheus]
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/llm-finops-gateway.json
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana:/dashboards-src:ro
+    # The committed dashboard references the data source as ${DS_PROMETHEUS} so that a manual
+    # import asks which Prometheus to use; for provisioning it is pinned to the one below.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        mkdir -p /var/lib/grafana/dashboards &&
+        sed 's/$${DS_PROMETHEUS}/prometheus/g' /dashboards-src/llm-finops-gateway.json > /var/lib/grafana/dashboards/llm-finops-gateway.json &&
+        exec /run.sh

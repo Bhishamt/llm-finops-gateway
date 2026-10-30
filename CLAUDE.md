@@ -33,7 +33,7 @@ src/llm_finops_gateway/
                    azure_identity.py (Entra ID tokens, [azure] extra, ADR-0014)
   metrics.py       Prometheus; telemetry.py optional OTel ([otel] extra, finops.* span attrs)
   models.py        request/response models (OpenAI shape + x_finops block)
-  cli.py           llm-finops-gateway serve | keys new|hash|check | pricing sync
+  cli.py           llm-finops-gateway serve | keys new|hash|check | pricing sync | alerts test
   report.py        /finops HTML page, summary CSV, report access scope (team key vs role finops, ADR-0016)
   alerts.py        Alerter: webhook POST per budget/upstream event, cooldown, background delivery (ADR-0017)
 config/            pricing.yaml, policies.yaml, keys.yaml (hashes only, repo copy is `keys: []`)

@@ -53,6 +53,22 @@ the browser's local storage.
   provider, token counts, cost and price book version per call. SQLite is fine for a laptop;
   for a shared deployment use PostgreSQL (`LFG_DATABASE_URL`) and a read-only database user.
 
+## Where each view lives in Azure
+
+Nothing here is a separate service to deploy; the question is only who opens what.
+
+| Audience | View | Where it is in Azure |
+| --- | --- | --- |
+| Developers, team leads | the report page | the gateway's own URL plus `/finops`: `https://<container-app>.<env>.<region>.azurecontainerapps.io/finops`, with the team key. Put Container Apps authentication (Entra ID) or API Management in front so only signed-in staff reach it; use internal ingress and a VNet when it must stay private. |
+| FinOps practitioners, finance | chargeback and trends | Power BI: Get Data from `/v1/finops/summary.csv` or the JSON with a `role: finops` key, or DirectQuery against the ledger in Azure Database for PostgreSQL. Scheduled refresh through the Power BI gateway. |
+| Platform operations | the Grafana dashboard | Azure Monitor managed Prometheus scrapes `/metrics` from the Container App (enable the Prometheus add-on and a pod/app annotation or a scrape job); import `grafana/llm-finops-gateway.json` into Azure Managed Grafana and pick that data source. Azure Monitor Workbooks can show the same metrics without Grafana. |
+| Everyone who needs to be told | alerts | the webhook to Slack or to a Teams Workflows "post to a channel" flow (`LFG_ALERT_FORMAT=teams`); for SLO-style rules, Azure Monitor alert rules on the Prometheus metrics with action groups (email, SMS, Teams, ITSM). |
+| Finance reconciliation | the invoice | Azure Cost Management shows the Azure OpenAI resource's bill as a whole; it has no team dimension. `pricing sync` keeps the price book at the invoice's unit prices; the ledger supplies the split. |
+
+Email alerts are not sent by the gateway itself: route the webhook through a Teams or Power
+Automate flow that sends mail, or use an Azure Monitor action group. Test any channel with
+`llm-finops-gateway alerts test`, which sends one sample event to `LFG_ALERT_WEBHOOK_URL`.
+
 ## What belongs where
 
 - Core (this repository): the access rule, the HTML page, CSV and JSON, the ledger schema.

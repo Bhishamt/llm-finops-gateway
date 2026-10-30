@@ -92,8 +92,8 @@ def test_html_report_lists_budgets_and_chargeback(open_client: TestClient) -> No
 
 def test_html_report_has_selectors_policy_and_price_views(open_client: TestClient) -> None:
     text = open_client.get("/finops").text
-    # team selector: one checkbox per team plus "all"
-    assert 'id="team-all"' in text
+    # team selector: a dropdown with "all" plus one checkbox per team
+    assert 'id="team-btn"' in text and 'id="team-menu"' in text and 'id="team-all"' in text
     assert 'class="team" value="platform"' in text and 'class="team" value="research"' in text
     # currency selector: the book currency and the configured display currencies
     assert '<option value="USD">USD</option>' in text and '<option value="EUR">EUR</option>' in text

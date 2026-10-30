@@ -69,6 +69,10 @@ is called out here.
   totals follow), display currency switch (`LFG_REPORT_RATES`, display only), and the
   effective policy per team and the price book opened from their version links.
 
+- `LFG_ALERT_FORMAT=teams` sends Adaptive Cards for Teams Workflows webhooks;
+  `llm-finops-gateway alerts test` sends one sample event. Report page: the team selector is a
+  dropdown with checkboxes; sort order survives a reload.
+
 ### Changed
 - An upstream 429 is returned as `429 upstream_rate_limited` with the provider's `Retry-After`
   instead of `502 upstream_error`; the reservation is still released and nothing is recorded.
