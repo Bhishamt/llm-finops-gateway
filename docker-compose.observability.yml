@@ -22,6 +22,9 @@ services:
     environment:
       GF_SECURITY_ADMIN_PASSWORD: admin
       GF_USERS_ALLOW_SIGN_UP: "false"
+      # local viewer: open the dashboard without signing in (edit as admin / admin)
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
       GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/llm-finops-gateway.json
     volumes:
       - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro

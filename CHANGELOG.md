@@ -73,6 +73,12 @@ is called out here.
   `llm-finops-gateway alerts test` sends one sample event. Report page: the team selector is a
   dropdown with checkboxes; sort order survives a reload.
 
+- Screenshots of the report page (ok, warn and block states from real traffic) and the Grafana
+  dashboard in the README; the local Grafana allows anonymous viewing; stat panels show 0
+  instead of "No data" when a counter is empty. Architecture document and diagram updated
+  for providers per model, streaming, Entra ID, reports, alerts and the Azure deployment shape;
+  demo chart regenerated.
+
 ### Changed
 - An upstream 429 is returned as `429 upstream_rate_limited` with the provider's `Retry-After`
   instead of `502 upstream_error`; the reservation is still released and nothing is recorded.

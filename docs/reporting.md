@@ -21,6 +21,8 @@ all-teams view. Rotate and disable it like any other key.
 
 ## The page: `GET /finops`
 
+![The /finops report page](images/finops-report.png)
+
 Open `http://<gateway>/finops` in a browser. In `api_key` mode it asks for a key once and keeps
 it in an HttpOnly session cookie; `/finops/logout` clears it. The page shows:
 
@@ -40,6 +42,11 @@ the browser's local storage.
 ## Spreadsheets and Power BI
 
 `GET /v1/finops/summary.csv` returns the chargeback rows as CSV with the same access rule.
+
+Verified so far: the HTML page, the CSV and the JSON endpoints, and the ledger database. The
+Power BI steps below are written from the connector's documented behaviour and will be checked
+once a gateway runs in Azure with a public URL, which Power BI needs (it cannot reach
+`localhost`; Power BI Desktop is Windows-only).
 
 - **Excel**: Data, From Web, the URL; in the advanced dialog add the header
   `Authorization: Bearer lfg_...`.
