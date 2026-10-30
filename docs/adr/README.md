@@ -5,7 +5,7 @@ immutable once accepted; a later ADR supersedes an earlier one rather than editi
 
 | ADR | Title | Status |
 | --- | ----- | ------ |
-| [0001](0001-openai-compatible-proxy.md) | Expose an OpenAI-compatible API as the gateway surface | Accepted |
+| [0001](0001-openai-compatible-proxy.md) | Expose an OpenAI-compatible API as the gateway surface | Accepted, streaming paragraph replaced by 0012 |
 | [0002](0002-unknown-model-is-an-error.md) | A model without a configured price is rejected, not billed at zero | Accepted |
 | [0003](0003-attribution-is-mandatory.md) | Calls without an owner are rejected, not guessed | Accepted |
 | [0004](0004-app-factory-and-dependency-injection.md) | Application factory with injected price book, ledger and provider | Accepted |
@@ -16,6 +16,7 @@ immutable once accepted; a later ADR supersedes an earlier one rather than editi
 | [0009](0009-evaluation-replay.md) | Evaluation replay: re-run recorded traffic to score quality and cost together | Proposed |
 | [0010](0010-generic-openai-compatible-provider.md) | One generic adapter for every OpenAI-compatible endpoint | Accepted |
 | [0011](0011-provider-per-model.md) | Several providers in one gateway, chosen per model by the price book | Accepted |
+| [0012](0012-streaming-settled-on-final-usage.md) | Streaming responses, with the cost settled from the final usage chunk | Accepted |
 
 ## Template
 

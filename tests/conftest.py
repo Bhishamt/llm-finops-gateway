@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 
 import pytest
@@ -12,7 +12,7 @@ from llm_finops_gateway.ledger import Ledger
 from llm_finops_gateway.main import create_app
 from llm_finops_gateway.policy import PolicySet
 from llm_finops_gateway.pricing import PriceBook
-from llm_finops_gateway.providers.base import CompletionResult
+from llm_finops_gateway.providers.base import CompletionResult, StreamChunk, TokenUsage
 
 PRICING_YAML = """\
 version: test-1
@@ -44,6 +44,9 @@ class FakeProvider:
         self.calls: list[dict[str, object]] = []
         self.closed = False
         self.fail_with: Exception | None = None
+        self.stream_parts = ["hello ", "from fake"]
+        self.fail_mid_stream = False  # raise fail_with after the first streamed part
+        self.stream_without_usage = False  # end the stream with no usage chunk
 
     async def chat(
         self,
@@ -71,6 +74,35 @@ class FakeProvider:
             output_tokens=self.output_tokens,
             cached_input_tokens=self.cached_input_tokens,
             reasoning_tokens=self.reasoning_tokens,
+        )
+
+    async def stream(
+        self,
+        model: str,
+        messages: list[dict[str, str]],
+        *,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        max_completion_tokens: int | None = None,
+    ) -> AsyncIterator[StreamChunk]:
+        self.calls.append({"model": model, "messages": messages, "stream": True})
+        if self.fail_with is not None and not self.fail_mid_stream:
+            raise self.fail_with
+        for i, part in enumerate(self.stream_parts):
+            yield StreamChunk(delta=part)
+            if i == 0 and self.fail_with is not None:
+                raise self.fail_with
+        if self.stream_without_usage:
+            yield StreamChunk(finish_reason="stop")
+            return
+        yield StreamChunk(
+            finish_reason="stop",
+            usage=TokenUsage(
+                self.input_tokens,
+                self.output_tokens,
+                self.cached_input_tokens,
+                self.reasoning_tokens,
+            ),
         )
 
     async def aclose(self) -> None:

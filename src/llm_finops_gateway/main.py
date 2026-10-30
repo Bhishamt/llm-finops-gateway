@@ -7,6 +7,7 @@ Use the factory so tests can inject a price book, policies, key ring, ledger and
 
 from __future__ import annotations
 
+import json
 import logging
 import time
 import uuid
@@ -16,7 +17,7 @@ from decimal import Decimal
 from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
 from . import __version__
 from .attribution import Attribution, resolve_attribution
@@ -40,10 +41,18 @@ from .models import (
     TeamBudgetRow,
     Usage,
 )
-from .policy import BudgetStatus, PolicyEngine, PolicySet, estimate_cost, month_start
+from .policy import (
+    BudgetStatus,
+    PolicyEngine,
+    PolicySet,
+    estimate_cost,
+    estimate_tokens,
+    month_start,
+)
 from .pricing import PriceBook, UnknownModelError, money
 from .providers import Provider, ProviderError
 from .providers.azure_openai import AzureOpenAIProvider
+from .providers.base import TokenUsage
 from .providers.ollama import OllamaProvider
 from .providers.openai_compat import OpenAICompatProvider
 from .telemetry import Telemetry
@@ -139,6 +148,28 @@ def _state(request: Request) -> Any:
 
 def _budget_envelope(status: BudgetStatus | None) -> BudgetEnvelope | None:
     return BudgetEnvelope(**status.as_dict()) if status else None
+
+
+_SSE_DONE = b"data: [DONE]\n\n"
+
+
+def _sse(event: dict[str, Any]) -> bytes:
+    return f"data: {json.dumps(event, separators=(',', ':'))}\n\n".encode()
+
+
+def _stream_chunk(
+    request_id: str, created: int, model: str, delta: str | None, finish_reason: str | None
+) -> dict[str, Any]:
+    """One ``chat.completion.chunk`` in the OpenAI wire shape."""
+    choice: dict[str, Any] = {"index": 0, "finish_reason": finish_reason}
+    choice["delta"] = {"role": "assistant", "content": delta} if delta is not None else {}
+    return {
+        "id": request_id,
+        "object": "chat.completion.chunk",
+        "created": created,
+        "model": model,
+        "choices": [choice],
+    }
 
 
 def _budget_headers(response: Response, status: BudgetStatus | None, warnings: list[str]) -> None:
@@ -246,7 +277,7 @@ def create_app(
         response: Response,
         attr: Annotated[Attribution, Depends(resolve_attribution)],
         state: Annotated[Any, Depends(_state)],
-    ) -> ChatResponse:
+    ) -> ChatResponse | StreamingResponse:
         book: PriceBook = state.price_book
         engine: PolicyEngine = state.policy_engine
         ledger: Ledger = state.ledger
@@ -261,9 +292,6 @@ def create_app(
             model=req.model,
             key_id=attr.key_id or "",
         )
-        if req.stream:
-            raise HTTPException(status_code=400, detail="stream=true is not supported yet")
-
         # 1. Fail before spending: a model we cannot price must not be called (ADR-0002).
         if not book.has(req.model):
             metrics.requests.labels(attr.team, req.model, "unpriced").inc()
@@ -272,13 +300,8 @@ def create_app(
         # 2. Policy: allow-list, rate limit, atomic budget reservation (ADR-0005, 0007).
         messages = [m.model_dump() for m in req.messages]
         policy = engine.resolve(attr.team)
-        estimate = estimate_cost(
-            book,
-            req.model,
-            messages,
-            req.max_tokens,
-            policy.budget.reserve_output_tokens if policy.budget else 1,
-        )
+        reserve_output = policy.budget.reserve_output_tokens if policy.budget else 1
+        estimate = estimate_cost(book, req.model, messages, req.max_tokens, reserve_output)
         decision = engine.check(attr, req.model, estimate)
         if not decision.allowed:
             metrics.requests.labels(attr.team, req.model, decision.violation or "blocked").inc()
@@ -304,63 +327,194 @@ def create_app(
         # Reasoning models (gpt-5, o-series) take max_completion_tokens and only the default
         # temperature; the client's values are translated so OpenAI SDK defaults keep working.
         reasoning = book.is_reasoning(req.model)
-        started = time.perf_counter()
-        try:
-            result = await provider.chat(
-                req.model,
-                messages,
-                temperature=None if reasoning else req.temperature,
-                max_tokens=None if reasoning else req.max_tokens,
-                max_completion_tokens=req.max_tokens if reasoning else None,
+        gen_params: dict[str, Any] = {
+            "temperature": None if reasoning else req.temperature,
+            "max_tokens": None if reasoning else req.max_tokens,
+            "max_completion_tokens": req.max_tokens if reasoning else None,
+        }
+        request_id = f"gw-{uuid.uuid4().hex}"
+
+        def settle(usage: TokenUsage) -> tuple[Decimal, BudgetStatus | None]:
+            """Step 4 and 5: price, record and settle in one transaction, then read the
+            budget state after this call so clients see where they stand now."""
+            cost = book.cost(
+                req.model, usage.input_tokens, usage.output_tokens, usage.cached_input_tokens
             )
-        except Exception as exc:
+            ledger.record(
+                CostEntry(
+                    request_id=request_id,
+                    team=attr.team,
+                    project=attr.project,
+                    use_case=attr.use_case,
+                    provider=provider.name,
+                    model=req.model,
+                    input_tokens=usage.input_tokens,
+                    output_tokens=usage.output_tokens,
+                    cached_input_tokens=usage.cached_input_tokens,
+                    cost_usd=cost,
+                    price_book_version=book.version,
+                    key_id=attr.key_id,
+                ),
+                release_reserved=decision.reserved_usd,
+            )
+            metrics.observe_cost(
+                attr.team, attr.project, req.model, cost, usage.input_tokens, usage.output_tokens
+            )
+            outcome = "warned" if decision.warnings else "ok"
+            metrics.requests.labels(attr.team, req.model, outcome).inc()
+            telemetry.annotate(
+                cost_usd=float(cost),
+                input_tokens=usage.input_tokens,
+                output_tokens=usage.output_tokens,
+                request_id=request_id,
+            )
+            status = engine.budget_status(attr.team)
+            if status is not None:
+                metrics.budget_used.labels(attr.team).set(float(status.used_pct) / 100)
+            return cost, status
+
+        def on_upstream_failure(exc: BaseException) -> str:
             if decision.reserved_usd:
                 ledger.release(attr.team, decision.reserved_usd)
             throttled = isinstance(exc, ProviderError) and exc.status_code == 429
             outcome = "upstream_rate_limited" if throttled else "upstream_error"
             metrics.requests.labels(attr.team, req.model, outcome).inc()
+            return outcome
+
+        def envelope(cost: Decimal, status: BudgetStatus | None) -> FinOpsEnvelope:
+            return FinOpsEnvelope(
+                cost_usd=money(cost),
+                price_book_version=book.version,
+                team=attr.team,
+                project=attr.project,
+                use_case=attr.use_case,
+                provider=provider.name,
+                key_id=attr.key_id,
+                policy=PolicyEnvelope(
+                    version=engine.version,
+                    budget=_budget_envelope(status),
+                    warnings=decision.warnings,
+                ),
+            )
+
+        def usage_model(usage: TokenUsage) -> Usage:
+            return Usage(
+                prompt_tokens=usage.input_tokens,
+                completion_tokens=usage.output_tokens,
+                total_tokens=usage.input_tokens + usage.output_tokens,
+                prompt_tokens_details=(
+                    PromptTokensDetails(cached_tokens=usage.cached_input_tokens)
+                    if usage.cached_input_tokens
+                    else None
+                ),
+                completion_tokens_details=(
+                    CompletionTokensDetails(reasoning_tokens=usage.reasoning_tokens)
+                    if usage.reasoning_tokens
+                    else None
+                ),
+            )
+
+        if req.stream:
+            # Streaming (ADR-0012): the policy decision above already holds; cost is settled
+            # from the final usage chunk and travels in the last event, not in headers.
+            async def events() -> AsyncIterator[bytes]:
+                created = int(time.time())
+                finish = "stop"
+                usage: TokenUsage | None = None
+                settled = False
+                started = time.perf_counter()
+                try:
+                    async for part in provider.stream(req.model, messages, **gen_params):
+                        if part.delta:
+                            yield _sse(
+                                _stream_chunk(request_id, created, req.model, part.delta, None)
+                            )
+                        if part.finish_reason:
+                            finish = part.finish_reason
+                        if part.usage is not None:
+                            usage = part.usage
+                    metrics.upstream_latency.labels(provider.name, req.model).observe(
+                        time.perf_counter() - started
+                    )
+                    estimated = usage is None
+                    if usage is None:
+                        est_in, est_out = estimate_tokens(messages, req.max_tokens, reserve_output)
+                        usage = TokenUsage(input_tokens=est_in, output_tokens=est_out)
+                        log.warning(
+                            "stream from %s ended without usage request_id=%s team=%s model=%s; "
+                            "billing the estimate (%d in, %d out)",
+                            provider.name,
+                            request_id,
+                            attr.team,
+                            req.model,
+                            est_in,
+                            est_out,
+                        )
+                    cost, status = settle(usage)
+                    settled = True
+                except Exception as exc:
+                    settled = True
+                    outcome = on_upstream_failure(exc)
+                    log.warning(
+                        "stream failed request_id=%s team=%s model=%s: %s",
+                        request_id,
+                        attr.team,
+                        req.model,
+                        exc,
+                    )
+                    yield _sse(
+                        {
+                            "error": outcome,
+                            "provider": provider.name,
+                            "detail": str(exc),
+                            "request_id": request_id,
+                        }
+                    )
+                    yield _SSE_DONE
+                    return
+                finally:
+                    if not settled and decision.reserved_usd:  # client went away mid-stream
+                        ledger.release(attr.team, decision.reserved_usd)
+                yield _sse(_stream_chunk(request_id, created, req.model, None, finish))
+                final: dict[str, Any] = {
+                    "id": request_id,
+                    "object": "chat.completion.chunk",
+                    "created": created,
+                    "model": req.model,
+                    "choices": [],
+                    "usage": usage_model(usage).model_dump(),
+                    "x_finops": envelope(cost, status).model_dump(),
+                }
+                if estimated:
+                    final["usage_estimated"] = True
+                yield _sse(final)
+                yield _SSE_DONE
+
+            return StreamingResponse(
+                events(),
+                media_type="text/event-stream",
+                headers={"X-FinOps-Request-Id": request_id, "Cache-Control": "no-cache"},
+            )
+
+        started = time.perf_counter()
+        try:
+            result = await provider.chat(req.model, messages, **gen_params)
+        except Exception as exc:
+            on_upstream_failure(exc)
             raise
         metrics.upstream_latency.labels(provider.name, req.model).observe(
             time.perf_counter() - started
         )
 
         # 4. Price, record and settle the reservation in one transaction.
-        cost = book.cost(
-            req.model, result.input_tokens, result.output_tokens, result.cached_input_tokens
-        )
-        request_id = f"gw-{uuid.uuid4().hex}"
-        ledger.record(
-            CostEntry(
-                request_id=request_id,
-                team=attr.team,
-                project=attr.project,
-                use_case=attr.use_case,
-                provider=provider.name,
-                model=req.model,
+        cost, status = settle(
+            TokenUsage(
                 input_tokens=result.input_tokens,
                 output_tokens=result.output_tokens,
                 cached_input_tokens=result.cached_input_tokens,
-                cost_usd=cost,
-                price_book_version=book.version,
-                key_id=attr.key_id,
-            ),
-            release_reserved=decision.reserved_usd,
+                reasoning_tokens=result.reasoning_tokens,
+            )
         )
-        metrics.observe_cost(
-            attr.team, attr.project, req.model, cost, result.input_tokens, result.output_tokens
-        )
-        metrics.requests.labels(attr.team, req.model, "warned" if decision.warnings else "ok").inc()
-        telemetry.annotate(
-            cost_usd=float(cost),
-            input_tokens=result.input_tokens,
-            output_tokens=result.output_tokens,
-            request_id=request_id,
-        )
-
-        # 5. Budget state after this call, so clients see where they stand now.
-        status = engine.budget_status(attr.team)
-        if status is not None:
-            metrics.budget_used.labels(attr.team).set(float(status.used_pct) / 100)
         _budget_headers(response, status, decision.warnings)
         response.headers["X-FinOps-Cost-USD"] = money(cost)
         response.headers["X-FinOps-Request-Id"] = request_id
@@ -375,35 +529,15 @@ def create_app(
                     finish_reason=result.finish_reason,
                 )
             ],
-            usage=Usage(
-                prompt_tokens=result.input_tokens,
-                completion_tokens=result.output_tokens,
-                total_tokens=result.input_tokens + result.output_tokens,
-                prompt_tokens_details=(
-                    PromptTokensDetails(cached_tokens=result.cached_input_tokens)
-                    if result.cached_input_tokens
-                    else None
-                ),
-                completion_tokens_details=(
-                    CompletionTokensDetails(reasoning_tokens=result.reasoning_tokens)
-                    if result.reasoning_tokens
-                    else None
-                ),
+            usage=usage_model(
+                TokenUsage(
+                    input_tokens=result.input_tokens,
+                    output_tokens=result.output_tokens,
+                    cached_input_tokens=result.cached_input_tokens,
+                    reasoning_tokens=result.reasoning_tokens,
+                )
             ),
-            x_finops=FinOpsEnvelope(
-                cost_usd=money(cost),
-                price_book_version=book.version,
-                team=attr.team,
-                project=attr.project,
-                use_case=attr.use_case,
-                provider=provider.name,
-                key_id=attr.key_id,
-                policy=PolicyEnvelope(
-                    version=engine.version,
-                    budget=_budget_envelope(status),
-                    warnings=decision.warnings,
-                ),
-            ),
+            x_finops=envelope(cost, status),
         )
 
     @app.get("/v1/finops/summary", response_model=CostSummary)

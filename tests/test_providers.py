@@ -7,7 +7,7 @@ import pytest
 import respx
 
 from llm_finops_gateway.providers.azure_openai import AzureOpenAIProvider
-from llm_finops_gateway.providers.base import ProviderError
+from llm_finops_gateway.providers.base import ProviderError, TokenUsage
 from llm_finops_gateway.providers.ollama import OllamaProvider
 from llm_finops_gateway.providers.openai_compat import OpenAICompatProvider
 
@@ -261,3 +261,71 @@ async def test_ollama_maps_max_completion_tokens_to_num_predict() -> None:
     await provider.chat("m", MESSAGES, max_completion_tokens=9)
     await provider.aclose()
     assert json.loads(route.calls.last.request.content)["options"] == {"num_predict": 9}
+
+
+SSE = (
+    b'data: {"choices":[{"delta":{"role":"assistant","content":""},"finish_reason":null}]}\n\n'
+    b'data: {"choices":[{"delta":{"content":"Hel"},"finish_reason":null}]}\n\n'
+    b'data: {"choices":[{"delta":{"content":"lo"},"finish_reason":"stop"}]}\n\n'
+    b'data: {"choices":[],"usage":{"prompt_tokens":9,"completion_tokens":2,'
+    b'"prompt_tokens_details":{"cached_tokens":4}}}\n\n'
+    b"data: [DONE]\n\n"
+)
+
+
+@respx.mock
+async def test_openai_compat_stream_yields_deltas_then_usage() -> None:
+    route = respx.post("http://vllm.test/v1/chat/completions").mock(
+        return_value=httpx.Response(200, content=SSE)
+    )
+    provider = OpenAICompatProvider(base_url="http://vllm.test/v1")
+    chunks = [c async for c in provider.stream("m", MESSAGES, max_tokens=5)]
+    await provider.aclose()
+    payload = json.loads(route.calls.last.request.content)
+    assert payload["stream"] is True and payload["stream_options"] == {"include_usage": True}
+    assert "".join(c.delta for c in chunks) == "Hello"
+    assert [c.finish_reason for c in chunks if c.finish_reason] == ["stop"]
+    assert chunks[-1].usage == TokenUsage(9, 2, cached_input_tokens=4)
+
+
+@respx.mock
+async def test_azure_openai_stream_error_status_becomes_provider_error() -> None:
+    respx.post("https://res.openai.azure.com/openai/deployments/m/chat/completions").mock(
+        return_value=httpx.Response(429, headers={"Retry-After": "3"}, text="slow down")
+    )
+    provider = AzureOpenAIProvider(endpoint="https://res.openai.azure.com", api_key="k")
+    with pytest.raises(ProviderError) as exc:
+        async for _ in provider.stream("m", MESSAGES):
+            pass
+    assert (exc.value.status_code, exc.value.retry_after) == (429, "3")
+    await provider.aclose()
+
+
+@respx.mock
+async def test_azure_openai_stream_parses_sse() -> None:
+    respx.post("https://res.openai.azure.com/openai/deployments/m/chat/completions").mock(
+        return_value=httpx.Response(200, content=SSE)
+    )
+    provider = AzureOpenAIProvider(endpoint="https://res.openai.azure.com", api_key="k")
+    chunks = [c async for c in provider.stream("m", MESSAGES)]
+    await provider.aclose()
+    assert "".join(c.delta for c in chunks) == "Hello" and chunks[-1].usage is not None
+
+
+@respx.mock
+async def test_ollama_stream_reads_ndjson_and_final_counts() -> None:
+    body = (
+        b'{"message":{"role":"assistant","content":"Hel"},"done":false}\n'
+        b'{"message":{"role":"assistant","content":"lo"},"done":false}\n'
+        b'{"message":{"role":"assistant","content":""},"done":true,"done_reason":"stop",'
+        b'"prompt_eval_count":7,"eval_count":2}\n'
+    )
+    route = respx.post("http://ollama.test/api/chat").mock(
+        return_value=httpx.Response(200, content=body)
+    )
+    provider = OllamaProvider(base_url="http://ollama.test")
+    chunks = [c async for c in provider.stream("m", MESSAGES)]
+    await provider.aclose()
+    assert json.loads(route.calls.last.request.content)["stream"] is True
+    assert "".join(c.delta for c in chunks) == "Hello"
+    assert chunks[-1].finish_reason == "stop" and chunks[-1].usage == TokenUsage(7, 2)

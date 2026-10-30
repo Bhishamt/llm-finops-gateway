@@ -177,6 +177,15 @@ def month_start(now: datetime | None = None) -> datetime:
     return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
 
+def estimate_tokens(
+    messages: list[dict[str, str]], max_tokens: int | None, reserve_output_tokens: int
+) -> tuple[int, int]:
+    """(input, output) token estimate without a tokenizer: prompt chars / 4 plus a per-message
+    overhead; output bounded by max_tokens or the policy's default."""
+    prompt_chars = sum(len(m.get("content", "")) for m in messages)
+    return prompt_chars // 4 + 8 * len(messages), max_tokens or reserve_output_tokens
+
+
 def estimate_cost(
     book: PriceBook,
     model: str,
@@ -184,11 +193,9 @@ def estimate_cost(
     max_tokens: int | None,
     reserve_output_tokens: int,
 ) -> Decimal:
-    """Upper-ish bound of a call's cost for budget reservation. Chars/4 is the usual rough
-    tokenizer-free estimate; output is bounded by max_tokens or the policy's default."""
-    prompt_chars = sum(len(m.get("content", "")) for m in messages)
-    input_tokens = prompt_chars // 4 + 8 * len(messages)
-    return book.cost(model, input_tokens, max_tokens or reserve_output_tokens)
+    """Upper-ish bound of a call's cost for budget reservation."""
+    input_tokens, output_tokens = estimate_tokens(messages, max_tokens, reserve_output_tokens)
+    return book.cost(model, input_tokens, output_tokens)
 
 
 class _SlidingWindow:

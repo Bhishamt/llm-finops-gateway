@@ -35,7 +35,7 @@ src/llm_finops_gateway/
 config/            pricing.yaml, policies.yaml, keys.yaml (hashes only, repo copy is `keys: []`)
 demo/              run_demo.py (simulated or live), policies.yaml (tiny budgets), README.md
 docs/              architecture.md, deployment.md, azure-setup.md, testing-plan.md, comparison.md,
-                   first-publish.md, adr/0001..0011
+                   first-publish.md, adr/0001..0012
 tests/             one test module per source module, 117 tests, FakeProvider in conftest.py
 ```
 
@@ -62,6 +62,10 @@ tests/             one test module per source module, 117 tests, FakeProvider in
   (ADR-0011). An unconfigured provider falls back to the default with a warning, not an error.
 - Response always carries `X-FinOps-Request-Id`, `X-FinOps-Cost-USD`, `X-FinOps-Budget-*`
   and the `x_finops` block (cost, price_book_version, policy, warnings, key_id).
+- Streaming (`stream: true`) runs the same policy path, then settles the cost from the final
+  usage chunk; the `x_finops` block is in the last SSE event. No usage -> billed at the
+  estimate with `usage_estimated: true`; mid-stream failure -> reservation released, error
+  event, no ledger row (ADR-0012).
 - Endpoints: `/v1/chat/completions`, `/v1/models`, `/v1/finops/summary`, `/v1/finops/budgets`,
   `/metrics`, `/healthz`.
 
@@ -92,7 +96,7 @@ Bias toward caution over speed; for trivial tasks use judgment.
 - `make check` must be green before any commit: ruff (lint + format), mypy `--strict` on
   `src` and `tests`, pytest. Pre-commit is installed by `make install`.
 - Every module has a test module; new behaviour comes with a test in the same change.
-- Every design decision gets an ADR in `docs/adr/` (next number: 0012). ADR-0009 (evaluation
+- Every design decision gets an ADR in `docs/adr/` (next number: 0013). ADR-0009 (evaluation
   replay) is Proposed, not implemented.
 - Decimal for money everywhere; never float.
 - Secrets only via env / `SecretStr`. Never commit a raw `lfg_` key, `.env`, `*.db`, `demo/out/`.

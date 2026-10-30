@@ -101,6 +101,24 @@ class SimulatedProvider:
             output_tokens=self._rng.randint(80, 600),
         )
 
+    async def stream(
+        self,
+        model: str,
+        messages: list[dict[str, str]],
+        *,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        max_completion_tokens: int | None = None,
+    ) -> Any:
+        from llm_finops_gateway.providers.base import StreamChunk, TokenUsage
+
+        result = await self.chat(model, messages)
+        yield StreamChunk(delta=result.content)
+        yield StreamChunk(
+            finish_reason="stop",
+            usage=TokenUsage(result.input_tokens, result.output_tokens),
+        )
+
     async def aclose(self) -> None:
         return None
 
