@@ -45,14 +45,14 @@
 
     <rect x="270" y="296" width="400" height="34" rx="6" fill="#e9f1fb"/>
     <text x="282" y="318">4  Provider call</text>
-    <text x="410" y="318" fill="#52514e">Ollama or Azure OpenAI</text>
+    <text x="410" y="318" fill="#52514e">Ollama, Azure, compatible</text>
     <text x="600" y="318" fill="#d03b3b" font-weight="600">502</text>
 
     <rect x="270" y="338" width="400" height="34" rx="6" fill="#e9f1fb"/>
     <text x="282" y="360">5  Price + ledger</text>
     <text x="410" y="360" fill="#52514e">tokens x versioned price, one row per call</text>
 
-    <text x="270" y="396" font-size="11" fill="#52514e">6  Response: OpenAI shape + x_finops {cost, budget, warnings} + X-FinOps-* headers</text>
+    <text x="270" y="396" font-size="11" fill="#52514e">6  Response: OpenAI shape or SSE stream + x_finops {cost, budget, warnings} + X-FinOps-* headers</text>
   </g>
 
   <!-- rejected arrow -->
@@ -64,12 +64,12 @@
   <line x1="690" y1="313" x2="760" y2="313" stroke="#52514e" stroke-width="1.5" marker-end="url(#arr)"/>
   <rect x="760" y="285" width="200" height="56" rx="10" fill="#ffffff" stroke="#c3c2b7"/>
   <text x="860" y="309" font-size="13" font-weight="600" text-anchor="middle" fill="#0b0b0b">LLM provider</text>
-  <text x="860" y="327" font-size="11" text-anchor="middle" fill="#52514e">Azure OpenAI | Ollama</text>
+  <text x="860" y="327" font-size="11" text-anchor="middle" fill="#52514e">Azure | Ollama | OpenAI-compat</text>
 
   <!-- config -->
   <rect x="250" y="440" width="200" height="70" rx="10" fill="#ffffff" stroke="#c3c2b7"/>
   <text x="350" y="463" font-size="13" font-weight="600" text-anchor="middle" fill="#0b0b0b">config/ (git)</text>
-  <text x="350" y="481" font-size="11" text-anchor="middle" fill="#52514e">pricing.yaml  v2026-11-01</text>
+  <text x="350" y="481" font-size="11" text-anchor="middle" fill="#52514e">pricing.yaml  v2026-11-02</text>
   <text x="350" y="497" font-size="11" text-anchor="middle" fill="#52514e">policies.yaml, keys.yaml (hashes)</text>
   <line x1="350" y1="440" x2="350" y2="412" stroke="#52514e" stroke-width="1.5" marker-end="url(#arr)"/>
 
@@ -83,7 +83,7 @@
   <!-- reports -->
   <rect x="760" y="440" width="200" height="70" rx="10" fill="#ffffff" stroke="#c3c2b7"/>
   <text x="860" y="463" font-size="13" font-weight="600" text-anchor="middle" fill="#0b0b0b">Chargeback</text>
-  <text x="860" y="481" font-size="11" text-anchor="middle" fill="#52514e">GET /v1/finops/summary</text>
-  <text x="860" y="497" font-size="11" text-anchor="middle" fill="#52514e">/v1/finops/budgets, /metrics, OTel</text>
+  <text x="860" y="481" font-size="11" text-anchor="middle" fill="#52514e">/finops page, summary JSON + CSV</text>
+  <text x="860" y="497" font-size="11" text-anchor="middle" fill="#52514e">budgets, /metrics, OTel, webhook alerts</text>
   <line x1="690" y1="475" x2="760" y2="475" stroke="#52514e" stroke-width="1.5" marker-end="url(#arr)"/>
 </svg>

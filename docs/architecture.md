@@ -12,28 +12,37 @@
 │            │                                    │  2. policy: allow-list       ── 403 │
 │            │                                    │     rate limit               ── 429 │
 │            │                                    │     reserve(estimate)        ── 403 │
-│            │                                    │  3. provider.chat(...)       ── 502 │
-│            │                                    │     (release reservation)           │
+│            │                                    │  3. provider.chat / .stream  ── 502 │
+│            │                                    │     (release reservation)    ── 429 │
 │            │                                    │  4. price_book.cost(tokens)         │
 │            │ ◀──────────────────────────────────│  5. ledger.record + settle (1 txn)  │
-│            │  OpenAI response + x_finops        │  6. budget_status -> headers, body  │
+│            │  OpenAI response + x_finops,       │  6. budget_status -> headers, body  │
+│            │  or SSE with x_finops at the end   │     alerts on warn / block          │
 └────────────┘                                    └──────┬──────────────┬───────────────┘
                                                          │              │
-                                              ┌──────────▼───┐   ┌──────▼────────────────┐
-                                              │ Provider     │   │ Ledger (SQLAlchemy)   │
-                                              │ Ollama       │   │ cost_records          │
-                                              │ Azure OpenAI │   │ SQLite / Postgres ... │
-                                              └──────────────┘   └───────────────────────┘
+                                      ┌──────────────────▼───┐   ┌──────▼────────────────┐
+                                      │ Providers (per model)│   │ Ledger (SQLAlchemy)   │
+                                      │ Ollama               │   │ cost_records          │
+                                      │ Azure OpenAI         │   │ budget_counters       │
+                                      │ (key or Entra ID)    │   │ SQLite / Postgres ... │
+                                      │ any OpenAI-compatible│   └───────────────────────┘
+                                      └──────────────────────┘
 ```
 
 Order matters: steps 0 to 2 fail **before** any money is spent. Step 3 failures are surfaced as
-HTTP 502 with the provider name; nothing is written to the ledger and the budget reservation
-is released. Step 2 reserves the call's estimated cost atomically (ADR-0007); step 5 settles
+HTTP 502 with the provider name (an upstream 429 as 429 with `Retry-After`); nothing is written
+to the ledger and the budget reservation is released. The provider for a model comes from the
+price book row (`provider:`), the default from `LFG_PROVIDER` (ADR-0011). With `stream: true`
+step 3 streams chunks to the client and steps 4 to 6 run on the final usage chunk (ADR-0012). Step 2 reserves the call's estimated cost atomically (ADR-0007); step 5 settles
 the actual cost and the ledger row in one transaction; step 6 re-reads the counter so the
 response reflects the state including this call. Prometheus counters and the OpenTelemetry
 span are updated along the way (`metrics.py`, `telemetry.py`).
 
-A rendered version of this flow is in `images/architecture.svg`.
+A rendered version of this flow is in `images/architecture.svg`. Around the request path:
+`/finops` (HTML), `/v1/finops/summary(.csv)` and `/v1/finops/budgets` read the ledger behind one
+access rule (ADR-0016); `/metrics` and OpenTelemetry spans are written along the way; webhook
+alerts fire on budget warn/block and upstream failures (ADR-0017); `pricing sync` keeps the price
+book at Azure's list prices offline (ADR-0013).
 
 ## Modules
 
@@ -48,15 +57,15 @@ A rendered version of this flow is in `images/architecture.svg`.
 | `metrics.py`                | Prometheus registry per app instance, `/metrics`                        |
 | `telemetry.py`              | Optional OpenTelemetry provider, `finops.*` span attributes             |
 | `ledger.py`                 | `CostRecord` and `BudgetCounter` tables; record/settle, reserve, release, summary |
-| `providers/base.py`         | `Provider` protocol, `CompletionResult`, `ProviderError`                |
+| `providers/base.py`         | `Provider` protocol (`chat`, `stream`), `CompletionResult`, `StreamChunk`, `ProviderError`, OpenAI usage/SSE mapping |
 | `providers/ollama.py`       | Adapter for Ollama `/api/chat`                                          |
-| `providers/azure_openai.py` | Adapter for Azure OpenAI data-plane REST with deployment mapping        |
+| `providers/azure_openai.py` | Adapter for Azure OpenAI data-plane REST with deployment mapping; API key or Entra ID token (`providers/azure_identity.py`, ADR-0014) |
 | `providers/openai_compat.py` | Adapter for any OpenAI Chat Completions server: Azure OpenAI v1, vLLM, LocalAI, OpenAI (ADR-0010) |
 | `pricing_sync.py`           | `pricing sync`: Azure Retail Prices meters matched to price book rows, report and in-place rewrite (ADR-0013) |
 | `report.py`                 | `/finops` HTML page, CSV summary, report access scope (ADR-0016) |
 | `alerts.py`                 | Webhook alerts for budget warn/block and upstream failures, cooldown, background delivery (ADR-0017) |
 | `main.py`                   | `create_app()` factory, endpoints, error handlers, model-to-provider routes (ADR-0004, 0011) |
-| `cli.py`                    | `llm-finops-gateway serve` and `keys new | hash | check`                |
+| `cli.py`                    | `llm-finops-gateway serve`, `keys new | hash | check`, `pricing sync`, `alerts test` |
 
 ## Data model
 
@@ -72,7 +81,8 @@ A rendered version of this flow is in `images/architecture.svg`.
 | `key_id`             | str, nullable  | which team key was used (ADR-0006)          |
 | `provider`, `model`  | str            | `model` indexed                             |
 | `input_tokens`, `output_tokens` | int |                                             |
-| `cost_usd`           | numeric(14,8)  | exact decimal                               |
+| `cached_input_tokens` | int           | part of `input_tokens` served from the provider's prompt cache |
+| `cost_usd`           | numeric(14,8)  | exact decimal, in the price book's currency |
 | `price_book_version` | str            | the version used to price this row          |
 
 `budget_counters` (one row per team and UTC month): `spent_usd`, `reserved_usd`. Enforcement
@@ -82,22 +92,27 @@ No prompt or completion text is stored.
 
 ## Cost model
 
-`cost = (input_tokens * input_price + output_tokens * output_price) / 1_000_000`, computed with
-`decimal.Decimal` from string-parsed YAML values so that `0.15` is exactly `0.15`. Prices are
-USD per million tokens, matching how providers publish them.
+`cost = ((input_tokens - cached) * input_price + cached * cached_input_price + output_tokens *
+output_price) / 1_000_000`, computed with `decimal.Decimal` from string-parsed YAML values so
+that `0.15` is exactly `0.15`. Prices are per million tokens in the book's `currency`, matching
+how providers publish them; reasoning tokens are part of `output_tokens`. A row's `reasoning:
+true` switches the request to `max_completion_tokens`; `provider:` picks the adapter.
 
 ## Deployment shape (target)
 
 ```
 Azure Container Apps ── llm-finops-gateway ──▶ Azure OpenAI (private endpoint)
-        │                     │
-   Key Vault (api key)   Azure Database for PostgreSQL (ledger)
-                              │
-                        Grafana / Power BI (chargeback)
+   managed identity         │   │                 role: Cognitive Services OpenAI User
+   (no provider key)        │   └── /finops, /v1/finops/* ──▶ Power BI (chargeback)
+   Key Vault (team keys)    │
+                     Azure Database for PostgreSQL (ledger)
+   /metrics ──▶ Azure Monitor managed Prometheus ──▶ Azure Managed Grafana (dashboard)
+   alerts  ──▶ Slack / Teams webhook
 ```
 
-The Terraform module for this is on the roadmap. Until then: run the container anywhere
-with the `LFG_*` variables set and `LFG_DATABASE_URL` pointing at a persistent database.
+The Bicep or Terraform module for this is on the roadmap. Until then: run the container
+anywhere with the `LFG_*` variables set and `LFG_DATABASE_URL` pointing at a persistent
+database; `docs/reporting.md` maps each view to its Azure service.
 
 ## Roadmap mapping
 
@@ -107,5 +122,4 @@ with the `LFG_*` variables set and `LFG_DATABASE_URL` pointing at a persistent d
 | OIDC attribution            | Third branch in `resolve_attribution`: JWT from Keycloak or Entra, team from a claim |
 | PII policy                  | Additional check inside step 2, same policy file             |
 | Shared rate limits          | Token bucket row in the database or Redis, replacing the in-memory window |
-| JWT attribution (later)     | A third branch in `resolve_attribution`, same `Attribution` value |
 | Amortised self-hosted cost  | Price book entries with hourly rate and a throughput model   |
