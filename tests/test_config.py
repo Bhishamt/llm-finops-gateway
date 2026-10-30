@@ -74,3 +74,14 @@ def test_azure_endpoint_without_key_fails_fast(monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.delenv("LFG_AZURE_OPENAI_API_KEY", raising=False)
     with pytest.raises(RuntimeError, match="must be set together"):
         build_providers(Settings(_env_file=None))  # type: ignore[call-arg]
+
+
+def test_azure_entra_auth_needs_no_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LFG_PROVIDER", "azure_openai")
+    monkeypatch.setenv("LFG_AZURE_OPENAI_ENDPOINT", "https://res.openai.azure.com")
+    monkeypatch.setenv("LFG_AZURE_OPENAI_AUTH", "entra")
+    monkeypatch.delenv("LFG_AZURE_OPENAI_API_KEY", raising=False)
+    settings = Settings(_env_file=None)  # type: ignore[call-arg]
+    assert settings.azure_openai_auth == "entra"
+    providers = build_providers(settings)
+    assert isinstance(providers["azure_openai"], AzureOpenAIProvider)

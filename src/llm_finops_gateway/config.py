@@ -38,7 +38,16 @@ class Settings(BaseSettings):
     azure_openai_endpoint: str | None = Field(
         default=None, description="https://<resource>.openai.azure.com"
     )
-    azure_openai_api_key: SecretStr | None = None
+    azure_openai_api_key: SecretStr | None = Field(
+        default=None, description="Required with azure_openai_auth=api_key."
+    )
+    azure_openai_auth: Literal["api_key", "entra"] = Field(
+        default="api_key",
+        description=(
+            "api_key: send the 'api-key' header. entra: bearer tokens from DefaultAzureCredential "
+            "(managed identity, service principal or az login); needs the [azure] extra (ADR-0014)."
+        ),
+    )
     azure_openai_api_version: str = "2024-10-21"
     azure_openai_deployments: dict[str, str] = Field(
         default_factory=dict,
@@ -102,14 +111,12 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def _azure_requires_credentials(self) -> Settings:
         if self.provider is ProviderKind.AZURE_OPENAI:
-            missing = [
-                name
-                for name, value in (
-                    ("LFG_AZURE_OPENAI_ENDPOINT", self.azure_openai_endpoint),
-                    ("LFG_AZURE_OPENAI_API_KEY", self.azure_openai_api_key),
-                )
-                if value is None
+            required: list[tuple[str, object]] = [
+                ("LFG_AZURE_OPENAI_ENDPOINT", self.azure_openai_endpoint)
             ]
+            if self.azure_openai_auth == "api_key":
+                required.append(("LFG_AZURE_OPENAI_API_KEY", self.azure_openai_api_key))
+            missing = [name for name, value in required if value is None]
             if missing:
                 raise ValueError(f"provider=azure_openai requires {missing}")
         return self

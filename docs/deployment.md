@@ -64,8 +64,10 @@ Every step is a config change in git with a reviewer, which is also your audit t
 
 - **Compute:** Azure Container Apps, 1 to 3 replicas, min 1. The image is non-root and has a
   health check. Set `LFG_DATABASE_URL` to PostgreSQL; SQLite is for one replica only.
-- **Secrets:** `LFG_AZURE_OPENAI_API_KEY` as a Container Apps secret referenced from Key Vault.
-  Managed identity for Azure OpenAI is on the roadmap and removes the key entirely.
+- **Secrets:** none for the provider when the Container App's managed identity has the
+  `Cognitive Services OpenAI User` role on the Azure OpenAI resource and the gateway runs with
+  `LFG_AZURE_OPENAI_AUTH=entra` (ADR-0014). With `api_key` auth, `LFG_AZURE_OPENAI_API_KEY` as a
+  Container Apps secret referenced from Key Vault.
 - **Network:** private endpoint to Azure OpenAI, internal ingress for the gateway, apps on the
   same VNet or via Private Link. Expose `/metrics` only internally.
 - **Config:** `config/` mounted from the container image (rebuild on change) or from a volume

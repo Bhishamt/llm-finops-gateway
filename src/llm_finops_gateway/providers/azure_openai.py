@@ -5,6 +5,7 @@ from typing import Any
 
 import httpx
 
+from .azure_identity import TokenProvider
 from .base import CompletionResult, ProviderError, StreamChunk, iter_openai_sse, openai_usage
 
 
@@ -13,6 +14,8 @@ class AzureOpenAIProvider:
 
     ``POST {endpoint}/openai/deployments/{deployment}/chat/completions?api-version=...``
     The model name in the request is mapped to a deployment name; unmapped names are used as-is.
+    Authenticates with an API key (``api-key`` header) or, given a ``token_provider``, with an
+    Entra ID bearer token fetched per request (ADR-0014).
     """
 
     name = "azure_openai"
@@ -20,19 +23,28 @@ class AzureOpenAIProvider:
     def __init__(
         self,
         endpoint: str,
-        api_key: str,
+        api_key: str | None = None,
         api_version: str = "2024-10-21",
         deployments: dict[str, str] | None = None,
         timeout: float = 120.0,
         client: httpx.AsyncClient | None = None,
+        token_provider: TokenProvider | None = None,
     ) -> None:
+        if (api_key is None) == (token_provider is None):
+            raise ValueError("AzureOpenAIProvider needs exactly one of api_key or token_provider")
         self._api_version = api_version
         self._deployments = dict(deployments or {})
+        self._token_provider = token_provider
         self._client = client or httpx.AsyncClient(
             base_url=endpoint.rstrip("/"),
             timeout=timeout,
-            headers={"api-key": api_key},
+            headers={"api-key": api_key} if api_key is not None else {},
         )
+
+    async def _auth_headers(self) -> dict[str, str]:
+        if self._token_provider is None:
+            return {}
+        return {"Authorization": f"Bearer {await self._token_provider.token()}"}
 
     def deployment_for(self, model: str) -> str:
         return self._deployments.get(model, model)
@@ -76,7 +88,10 @@ class AzureOpenAIProvider:
         payload = self._payload(messages, temperature, max_tokens, max_completion_tokens)
         try:
             resp = await self._client.post(
-                self._url(model), params={"api-version": self._api_version}, json=payload
+                self._url(model),
+                params={"api-version": self._api_version},
+                json=payload,
+                headers=await self._auth_headers(),
             )
         except httpx.HTTPError as exc:
             raise ProviderError(self.name, f"request failed: {exc}") from exc
@@ -109,7 +124,11 @@ class AzureOpenAIProvider:
         payload["stream_options"] = {"include_usage": True}
         try:
             async with self._client.stream(
-                "POST", self._url(model), params={"api-version": self._api_version}, json=payload
+                "POST",
+                self._url(model),
+                params={"api-version": self._api_version},
+                json=payload,
+                headers=await self._auth_headers(),
             ) as resp:
                 if resp.status_code >= 400:
                     body = (await resp.aread()).decode(errors="replace")
@@ -121,3 +140,5 @@ class AzureOpenAIProvider:
 
     async def aclose(self) -> None:
         await self._client.aclose()
+        if self._token_provider is not None:
+            await self._token_provider.aclose()

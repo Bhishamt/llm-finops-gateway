@@ -125,6 +125,11 @@ Then run the gateway and call it with `"model": "gpt-4o-mini"`. Every model name
 exist in `config/pricing.yaml`. A step-by-step `az` CLI walkthrough for a disposable test
 setup is in [docs/azure-setup.md](docs/azure-setup.md).
 
+Without a key, with the gateway's own identity (ADR-0014): `pip install "llm-finops-gateway[azure]"`,
+set `LFG_AZURE_OPENAI_AUTH=entra`, drop `LFG_AZURE_OPENAI_API_KEY`, and give the identity the
+`Cognitive Services OpenAI User` role on the resource. `DefaultAzureCredential` picks the
+Container App's managed identity in Azure and your `az login` session on a laptop.
+
 ### Any OpenAI-compatible endpoint (Azure OpenAI v1, vLLM, LocalAI, OpenAI)
 
 One adapter for every server that speaks the OpenAI Chat Completions API (ADR-0010). The base
@@ -305,7 +310,8 @@ Environment variables (prefix `LFG_`; a `.env` file is read if present):
 | `LFG_PROVIDER`                  | `ollama`                  | default provider: `ollama`, `azure_openai` or `openai_compat`; all configured ones are available |
 | `LFG_OLLAMA_BASE_URL`           | `http://localhost:11434`  |                                         |
 | `LFG_AZURE_OPENAI_ENDPOINT`     |                           | required for `azure_openai`             |
-| `LFG_AZURE_OPENAI_API_KEY`      |                           | required for `azure_openai`             |
+| `LFG_AZURE_OPENAI_API_KEY`      |                           | required for `azure_openai` with `api_key` auth |
+| `LFG_AZURE_OPENAI_AUTH`         | `api_key`                 | `api_key` or `entra` (managed identity / `az login`, needs `[azure]`) |
 | `LFG_AZURE_OPENAI_API_VERSION`  | `2024-10-21`              |                                         |
 | `LFG_AZURE_OPENAI_DEPLOYMENTS`  | `{}`                      | JSON map model name -> deployment       |
 | `LFG_OPENAI_COMPAT_BASE_URL`    |                           | required for `openai_compat`; includes the API prefix (`.../openai/v1`, `.../v1`) |
@@ -361,7 +367,7 @@ Architecture notes: [docs/architecture.md](docs/architecture.md). Operations:
 - **Next**: evaluation replay and regression scoring ([ADR-0009](docs/adr/0009-evaluation-replay.md),
   design proposed); OIDC attribution (Keycloak, Entra ID) alongside team keys.
 - **Then**: amortised and shared-pool pricing for
-  self-hosted models with token budgets; `ledger reconcile` CLI; managed identity for Azure OpenAI.
+  self-hosted models with token budgets; `ledger reconcile` CLI.
 - **Later**: PII policy (Presidio); shared rate limits for multi-replica deployments;
   Terraform module for Azure Container Apps + Key Vault + PostgreSQL; Grafana dashboard.
 

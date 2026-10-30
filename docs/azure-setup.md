@@ -59,9 +59,22 @@ LFG_OPENAI_COMPAT_MODELS={"gpt-4.1-mini": "gpt-4.1-mini-dev"}
 EOF
 ```
 
-`.env` is git-ignored. For anything beyond a laptop, put the key in Key Vault and inject it as
-an environment variable at runtime (Container Apps secret reference, or a managed identity and
-`DefaultAzureCredential`, which is a planned provider option).
+`.env` is git-ignored. For anything beyond a laptop, use the gateway's own identity instead of
+a key (ADR-0014): give it the `Cognitive Services OpenAI User` role and set
+`LFG_AZURE_OPENAI_AUTH=entra`. On a laptop the identity is your `az login` session:
+
+```bash
+pip install -e ".[azure]"
+ME=$(az ad signed-in-user show --query id -o tsv)
+RES=$(az cognitiveservices account show -n $NAME -g $RG --query id -o tsv)
+az role assignment create --assignee-object-id $ME --assignee-principal-type User \
+  --role "Cognitive Services OpenAI User" --scope $RES
+# a few minutes later:
+LFG_AZURE_OPENAI_AUTH=entra LFG_AZURE_OPENAI_API_KEY= llm-finops-gateway serve
+```
+
+In Container Apps the same two settings point at the app's managed identity; Key Vault is then
+only needed for the team keys.
 
 ## 3. Run and call
 
