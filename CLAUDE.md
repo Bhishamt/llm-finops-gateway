@@ -37,6 +37,7 @@ src/llm_finops_gateway/
   report.py        /finops HTML page, summary CSV, report access scope (team key vs role finops, ADR-0016)
 config/            pricing.yaml, policies.yaml, keys.yaml (hashes only, repo copy is `keys: []`)
 demo/              run_demo.py (simulated or live), policies.yaml (tiny budgets), README.md
+examples/          OpenAI SDK examples (python/chat.py, typescript/chat.ts); grafana/ dashboard JSON
 docs/              architecture.md, deployment.md, azure-setup.md, testing-plan.md, comparison.md,
                    first-publish.md, adr/0001..0016
 tests/             one test module per source module, 117 tests, FakeProvider in conftest.py
