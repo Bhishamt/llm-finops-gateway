@@ -56,6 +56,11 @@ is called out here.
   SDK examples in Python and TypeScript (`examples/`): completion with `x_finops`, streaming,
   tool-call round trip, rejected call.
 
+- Currency: `pricing sync --currency EUR` fetches the retail list in that currency and
+  `--write` sets the book's `currency:`; the price book validates the code; responses carry
+  `x_finops.currency` and `X-FinOps-Currency`. Amounts in `cost_usd`, `monthly_usd` and the
+  `*_usd` fields are in the book's currency; the names stay for API stability before 1.0.
+
 ### Changed
 - An upstream 429 is returned as `429 upstream_rate_limited` with the provider's `Retry-After`
   instead of `502 upstream_error`; the reservation is still released and nothing is recorded.

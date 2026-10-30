@@ -147,7 +147,8 @@ class PolicyEnvelope(BaseModel):
 class FinOpsEnvelope(BaseModel):
     """Gateway-specific extension carried alongside the OpenAI-compatible response."""
 
-    cost_usd: str
+    cost_usd: str  # in `currency`; the field name is kept for API stability before 1.0
+    currency: str
     price_book_version: str
     team: str
     project: str

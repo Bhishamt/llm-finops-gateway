@@ -212,3 +212,22 @@ def test_cli_prints_table_and_exits_nonzero_on_drift(
     assert exc.value.code == 1
     assert "input: 0.25" in path.read_text()
     assert "value(s) rewritten" in capsys.readouterr().out
+
+
+@respx.mock
+def test_fetch_asks_for_the_currency() -> None:
+    respx.get(RETAIL_URL).mock(return_value=httpx.Response(200, json={"Items": []}))
+    fetch_retail_items("swedencentral", "EUR")
+    assert respx.calls.last.request.url.params["currencyCode"] == "'EUR'"
+
+
+def test_currency_mismatch_is_reported_and_written(tmp_path: Path) -> None:
+    path = tmp_path / "pricing.yaml"
+    path.write_text(BOOK)
+    results, _ = sync(path, "swedencentral", "global", items=ITEMS, currency="eur")
+    assert results[0].model == "(price book)" and results[0].status == "differs"
+    assert results[0].note == "USD -> EUR"
+    _, changes = sync(path, "swedencentral", "global", write=True, items=ITEMS, currency="EUR")
+    assert changes >= 1 and "currency: EUR" in path.read_text()
+    results, _ = sync(path, "swedencentral", "global", items=ITEMS, currency="EUR")
+    assert results[0].status == "ok"

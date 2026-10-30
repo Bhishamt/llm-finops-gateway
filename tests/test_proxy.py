@@ -391,3 +391,9 @@ def test_max_completion_tokens_is_accepted_from_clients(
     assert fake_provider.calls[0]["max_completion_tokens"] == 33
     r = client.post("/v1/chat/completions", json={**BODY, "n": 2}, headers=ATTR_HEADERS)
     assert r.status_code == 422
+
+
+def test_currency_is_reported_in_body_and_header(client: TestClient) -> None:
+    r = client.post("/v1/chat/completions", json=BODY, headers=ATTR_HEADERS)
+    assert r.json()["x_finops"]["currency"] == "USD"
+    assert r.headers["X-FinOps-Currency"] == "USD"

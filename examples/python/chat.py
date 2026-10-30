@@ -63,7 +63,8 @@ def streamed_completion() -> None:
         last = chunk
     # The final chunk has no choices; it carries usage and x_finops.
     x = finops(last) if last is not None else {}
-    print(f"\n   usage {last.usage.total_tokens if last and last.usage else '?'} tokens, cost {x.get('cost_usd')} USD")
+    tokens = last.usage.total_tokens if last is not None and last.usage else "?"
+    print(f"\n   usage {tokens} tokens, cost {x.get('cost_usd')} {x.get('currency', '')}")
 
 
 def tool_call_round_trip() -> None:
@@ -81,8 +82,12 @@ def tool_call_round_trip() -> None:
             },
         }
     ]
-    messages: list[Any] = [{"role": "user", "content": "What is the weather in Budapest? Use the tool."}]
-    first = client.chat.completions.create(model=MODEL, messages=messages, tools=tools, max_tokens=60)
+    messages: list[Any] = [
+        {"role": "user", "content": "What is the weather in Budapest? Use the tool."}
+    ]
+    first = client.chat.completions.create(
+        model=MODEL, messages=messages, tools=tools, max_tokens=60
+    )
     call = first.choices[0].message.tool_calls[0]
     print(f"3. tool call: {call.function.name}({call.function.arguments})")
     messages.append(first.choices[0].message)
@@ -93,7 +98,9 @@ def tool_call_round_trip() -> None:
             "content": json.dumps({"temp_c": 9, "sky": "cloudy"}),
         }
     )
-    second = client.chat.completions.create(model=MODEL, messages=messages, tools=tools, max_tokens=60)
+    second = client.chat.completions.create(
+        model=MODEL, messages=messages, tools=tools, max_tokens=60
+    )
     print("   answer:", second.choices[0].message.content)
 
 

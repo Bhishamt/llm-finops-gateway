@@ -69,7 +69,9 @@ def _pricing_sync(args: argparse.Namespace) -> None:
     if args.deployment not in DEPLOYMENTS:
         print(f"--deployment must be one of {', '.join(DEPLOYMENTS)}", file=sys.stderr)
         sys.exit(2)
-    results, changes = sync(Path(args.path), args.region, args.deployment, write=args.write)
+    results, changes = sync(
+        Path(args.path), args.region, args.deployment, write=args.write, currency=args.currency
+    )
     print(format_table(results))
     drift = [r for r in results if r.status != "ok"]
     if args.write:
@@ -135,6 +137,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="deployment type for rows without `sku`: global (default), regional, datazone",
     )
     s.add_argument("--path", default="config/pricing.yaml")
+    s.add_argument(
+        "--currency",
+        default="USD",
+        help="billing currency of the retail list, e.g. EUR; --write also sets the book's currency",
+    )
     s.add_argument("--write", action="store_true", help="rewrite differing prices in place")
     s.set_defaults(func=_pricing_sync)
 

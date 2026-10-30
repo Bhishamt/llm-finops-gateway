@@ -56,7 +56,9 @@ tests/             one test module per source module, 117 tests, FakeProvider in
   (ADR-0007). Warn -> 200 with `X-FinOps-Warning` and `x_finops.policy.budget.level: warn`;
   block -> 403 `budget_exceeded`. Rate limit runs before the budget check -> 429 with
   `Retry-After` (ADR-0008, per instance, in memory).
-- Every money string goes through `pricing.money()` (Decimal, no `0.0`, no `0.00`).
+- Every money string goes through `pricing.money()` (Decimal, no `0.0`, no `0.00`). Amounts are
+  in the price book's `currency` (validated 3-letter code), echoed as `x_finops.currency` and
+  `X-FinOps-Currency`; the `*_usd` field names are kept until 1.0.
 - Cached prompt tokens (`usage.prompt_tokens_details.cached_tokens`) are billed at the row's
   `cached_input` price and stored on the ledger row; an upstream 429 is passed through as
   `429 upstream_rate_limited` with `Retry-After`, never as 502.
