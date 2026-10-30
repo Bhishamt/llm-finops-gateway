@@ -31,6 +31,7 @@ from .models import (
     ChatRequest,
     ChatResponse,
     Choice,
+    CompletionTokensDetails,
     CostSummary,
     CostSummaryRow,
     FinOpsEnvelope,
@@ -300,10 +301,17 @@ def create_app(
             raise HTTPException(status_code=status_code, detail=detail, headers=headers)
 
         # 3. Upstream call; on failure give the reservation back.
+        # Reasoning models (gpt-5, o-series) take max_completion_tokens and only the default
+        # temperature; the client's values are translated so OpenAI SDK defaults keep working.
+        reasoning = book.is_reasoning(req.model)
         started = time.perf_counter()
         try:
             result = await provider.chat(
-                req.model, messages, temperature=req.temperature, max_tokens=req.max_tokens
+                req.model,
+                messages,
+                temperature=None if reasoning else req.temperature,
+                max_tokens=None if reasoning else req.max_tokens,
+                max_completion_tokens=req.max_tokens if reasoning else None,
             )
         except Exception as exc:
             if decision.reserved_usd:
@@ -374,6 +382,11 @@ def create_app(
                 prompt_tokens_details=(
                     PromptTokensDetails(cached_tokens=result.cached_input_tokens)
                     if result.cached_input_tokens
+                    else None
+                ),
+                completion_tokens_details=(
+                    CompletionTokensDetails(reasoning_tokens=result.reasoning_tokens)
+                    if result.reasoning_tokens
                     else None
                 ),
             ),

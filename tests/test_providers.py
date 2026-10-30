@@ -224,6 +224,7 @@ async def test_azure_openai_reads_cached_tokens() -> None:
                     "prompt_tokens": 1200,
                     "completion_tokens": 8,
                     "prompt_tokens_details": {"cached_tokens": 1024},
+                    "completion_tokens_details": {"reasoning_tokens": 6},
                 },
             },
         )
@@ -231,4 +232,32 @@ async def test_azure_openai_reads_cached_tokens() -> None:
     provider = AzureOpenAIProvider(endpoint="https://res.openai.azure.com", api_key="k")
     result = await provider.chat("m", MESSAGES)
     await provider.aclose()
-    assert result.cached_input_tokens == 1024
+    assert (result.cached_input_tokens, result.reasoning_tokens) == (1024, 6)
+
+
+@respx.mock
+async def test_azure_openai_sends_max_completion_tokens_for_reasoning_calls() -> None:
+    route = respx.post("https://res.openai.azure.com/openai/deployments/m/chat/completions").mock(
+        return_value=httpx.Response(
+            200, json={"choices": [{"message": {"content": "x"}}], "usage": {}}
+        )
+    )
+    provider = AzureOpenAIProvider(endpoint="https://res.openai.azure.com", api_key="k")
+    await provider.chat("m", MESSAGES, max_completion_tokens=64)
+    await provider.aclose()
+    payload = json.loads(route.calls.last.request.content)
+    assert payload["max_completion_tokens"] == 64
+    assert "max_tokens" not in payload and "temperature" not in payload
+
+
+@respx.mock
+async def test_ollama_maps_max_completion_tokens_to_num_predict() -> None:
+    route = respx.post("http://ollama.test/api/chat").mock(
+        return_value=httpx.Response(
+            200, json={"message": {"content": "x"}, "prompt_eval_count": 1, "eval_count": 1}
+        )
+    )
+    provider = OllamaProvider(base_url="http://ollama.test")
+    await provider.chat("m", MESSAGES, max_completion_tokens=9)
+    await provider.aclose()
+    assert json.loads(route.calls.last.request.content)["options"] == {"num_predict": 9}

@@ -90,6 +90,7 @@ class SimulatedProvider:
         *,
         temperature: float | None = None,
         max_tokens: int | None = None,
+        max_completion_tokens: int | None = None,
     ) -> Any:
         from llm_finops_gateway.providers.base import CompletionResult
 

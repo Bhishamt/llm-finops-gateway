@@ -31,11 +31,16 @@ class FakeProvider:
     name = "fake"
 
     def __init__(
-        self, input_tokens: int = 100, output_tokens: int = 50, cached_input_tokens: int = 0
+        self,
+        input_tokens: int = 100,
+        output_tokens: int = 50,
+        cached_input_tokens: int = 0,
+        reasoning_tokens: int = 0,
     ) -> None:
         self.input_tokens = input_tokens
         self.output_tokens = output_tokens
         self.cached_input_tokens = cached_input_tokens
+        self.reasoning_tokens = reasoning_tokens
         self.calls: list[dict[str, object]] = []
         self.closed = False
         self.fail_with: Exception | None = None
@@ -47,6 +52,7 @@ class FakeProvider:
         *,
         temperature: float | None = None,
         max_tokens: int | None = None,
+        max_completion_tokens: int | None = None,
     ) -> CompletionResult:
         self.calls.append(
             {
@@ -54,6 +60,7 @@ class FakeProvider:
                 "messages": messages,
                 "temperature": temperature,
                 "max_tokens": max_tokens,
+                "max_completion_tokens": max_completion_tokens,
             }
         )
         if self.fail_with is not None:
@@ -63,6 +70,7 @@ class FakeProvider:
             input_tokens=self.input_tokens,
             output_tokens=self.output_tokens,
             cached_input_tokens=self.cached_input_tokens,
+            reasoning_tokens=self.reasoning_tokens,
         )
 
     async def aclose(self) -> None:

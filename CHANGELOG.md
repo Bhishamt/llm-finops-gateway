@@ -18,6 +18,11 @@ is called out here.
   read from Azure OpenAI and OpenAI-compatible responses, billed at the cached price, recorded
   on the ledger row and echoed in the response `usage`.
 
+- Reasoning models: a price book row with `reasoning: true` (gpt-5, gpt-5-mini, gpt-5-nano
+  shipped) makes the gateway send `max_completion_tokens` instead of `max_tokens` and drop the
+  temperature; adapters accept `max_completion_tokens`. `usage.completion_tokens_details.reasoning_tokens`
+  is passed through when the provider reports it.
+
 ### Changed
 - An upstream 429 is returned as `429 upstream_rate_limited` with the provider's `Retry-After`
   instead of `502 upstream_error`; the reservation is still released and nothing is recorded.

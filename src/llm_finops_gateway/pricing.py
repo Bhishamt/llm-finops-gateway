@@ -21,6 +21,7 @@ class ModelPrice:
     output_per_million: Decimal
     cached_input_per_million: Decimal | None = None  # None: cached tokens cost the input price
     provider: str | None = None  # adapter that serves the model; None: the default provider
+    reasoning: bool = False  # OpenAI reasoning family: max_completion_tokens, fixed temperature
 
 
 class UnknownModelError(KeyError):
@@ -73,6 +74,7 @@ class PriceBook:
                 output_per_million=Decimal(str(spec["output"])),
                 cached_input_per_million=None if cached is None else Decimal(str(cached)),
                 provider=None if provider is None else str(provider),
+                reasoning=bool(spec.get("reasoning", False)),
             )
         return cls(prices, version=str(raw["version"]), currency=str(raw["currency"]))
 
@@ -81,6 +83,14 @@ class PriceBook:
 
     def has(self, model: str) -> bool:
         return model in self._prices
+
+    def is_reasoning(self, model: str) -> bool:
+        """True for rows flagged ``reasoning: true`` (gpt-5, o-series): the upstream takes
+        ``max_completion_tokens`` instead of ``max_tokens`` and only the default temperature."""
+        try:
+            return self._prices[model].reasoning
+        except KeyError as exc:
+            raise UnknownModelError(model) from exc
 
     def provider_for(self, model: str) -> str | None:
         """Provider named by the price book row, or None for the default (ADR-0011)."""

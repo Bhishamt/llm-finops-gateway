@@ -160,6 +160,11 @@ With the shipped price book, setting the two Azure variables next to a local Oll
 provider serves each model. A row naming a provider that is not configured falls back to the
 default with a startup warning. `cached_input` prices the prompt tokens the provider served
 from its cache (`usage.prompt_tokens_details.cached_tokens`), the way Azure and OpenAI bill them.
+`reasoning: true` marks the gpt-5 and o-series rows: the gateway sends `max_completion_tokens`
+instead of `max_tokens` and drops the temperature, which those models reject, so OpenAI SDK
+defaults keep working. Reasoning tokens are part of `completion_tokens`, billed as output and
+reported in `usage.completion_tokens_details.reasoning_tokens`; a small `max_tokens` can be used
+up entirely by reasoning and return an empty message with `finish_reason: length`.
 
 ### The response
 

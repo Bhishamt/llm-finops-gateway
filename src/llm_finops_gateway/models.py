@@ -26,17 +26,23 @@ class PromptTokensDetails(BaseModel):
     cached_tokens: int
 
 
+class CompletionTokensDetails(BaseModel):
+    reasoning_tokens: int
+
+
 class Usage(BaseModel):
     prompt_tokens: int
     completion_tokens: int
     total_tokens: int
     prompt_tokens_details: PromptTokensDetails | None = None
+    completion_tokens_details: CompletionTokensDetails | None = None
 
     @model_serializer(mode="wrap")
     def _omit_empty_details(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
         data: dict[str, Any] = handler(self)
-        if data.get("prompt_tokens_details") is None:
-            data.pop("prompt_tokens_details", None)
+        for key in ("prompt_tokens_details", "completion_tokens_details"):
+            if data.get(key) is None:
+                data.pop(key, None)
         return data
 
 

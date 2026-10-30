@@ -46,6 +46,7 @@ class OpenAICompatProvider:
         *,
         temperature: float | None = None,
         max_tokens: int | None = None,
+        max_completion_tokens: int | None = None,
     ) -> CompletionResult:
         payload: dict[str, Any] = {
             "model": self.upstream_model_for(model),
@@ -56,6 +57,8 @@ class OpenAICompatProvider:
             payload["temperature"] = temperature
         if max_tokens is not None:
             payload["max_tokens"] = max_tokens
+        if max_completion_tokens is not None:
+            payload["max_completion_tokens"] = max_completion_tokens
         try:
             resp = await self._client.post("/chat/completions", json=payload)
         except httpx.HTTPError as exc:
@@ -71,12 +74,14 @@ class OpenAICompatProvider:
         choice = data["choices"][0]
         usage: dict[str, Any] = data.get("usage") or {}
         prompt_details: dict[str, Any] = usage.get("prompt_tokens_details") or {}
+        completion_details: dict[str, Any] = usage.get("completion_tokens_details") or {}
         return CompletionResult(
             content=str(choice["message"].get("content") or ""),
             input_tokens=int(usage.get("prompt_tokens", 0)),
             output_tokens=int(usage.get("completion_tokens", 0)),
             finish_reason=str(choice.get("finish_reason") or "stop"),
             cached_input_tokens=int(prompt_details.get("cached_tokens", 0)),
+            reasoning_tokens=int(completion_details.get("reasoning_tokens", 0)),
             raw=data,
         )
 
