@@ -358,6 +358,18 @@ Every request span carries `finops.team`, `finops.project`, `finops.use_case`, `
 `finops.key_id`, `finops.cost_usd`, `finops.input_tokens`, `finops.output_tokens`,
 `finops.request_id` and, when rejected, `finops.policy_violation`.
 
+## Grafana dashboard and SDK examples
+
+[`grafana/llm-finops-gateway.json`](grafana/llm-finops-gateway.json) is a ready-made dashboard
+for the `/metrics` endpoint: spend, calls served and rejected, budget used per team with the
+warn and block thresholds, spend rate by team, requests by outcome, tokens, upstream latency
+p50/p95 by provider, and a spend table by team, project and model. Import it into Grafana or
+Azure Managed Grafana and pick the Prometheus data source that scrapes the gateway.
+
+[`examples/`](examples/) has the same four calls in Python and TypeScript with the official
+OpenAI SDKs: a completion with the `x_finops` block, a stream with the cost in the final chunk,
+a tool-call round trip, and a rejected call.
+
 ## Docker
 
 ```bash

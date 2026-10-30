@@ -24,3 +24,6 @@ htmlcov/
 .vscode/
 .DS_Store
 demo/out/
+
+# Example dependencies
+examples/typescript/node_modules/

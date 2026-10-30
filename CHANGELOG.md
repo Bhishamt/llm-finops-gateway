@@ -52,6 +52,10 @@ is called out here.
   team, no key is 401 in `api_key` mode; the page has a login form with a session cookie
   (ADR-0016). `keys new --role finops`. Guidance in `docs/reporting.md`.
 
+- Grafana dashboard JSON for the Prometheus metrics (`grafana/llm-finops-gateway.json`) and
+  SDK examples in Python and TypeScript (`examples/`): completion with `x_finops`, streaming,
+  tool-call round trip, rejected call.
+
 ### Changed
 - An upstream 429 is returned as `429 upstream_rate_limited` with the provider's `Retry-After`
   instead of `502 upstream_error`; the reservation is still released and nothing is recorded.
