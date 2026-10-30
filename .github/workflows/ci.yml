@@ -21,7 +21,7 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
-      - run: pip install -e ".[dev,demo,otel]"
+      - run: pip install -e ".[dev,demo,otel,azure]"
       - run: ruff check . && ruff format --check .
       - run: mypy src tests
       - run: pytest -q

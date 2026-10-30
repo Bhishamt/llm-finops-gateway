@@ -329,3 +329,46 @@ async def test_ollama_stream_reads_ndjson_and_final_counts() -> None:
     assert json.loads(route.calls.last.request.content)["stream"] is True
     assert "".join(c.delta for c in chunks) == "Hello"
     assert chunks[-1].finish_reason == "stop" and chunks[-1].usage == TokenUsage(7, 2)
+
+
+class FakeTokenProvider:
+    def __init__(self) -> None:
+        self.calls = 0
+        self.closed = False
+
+    async def token(self) -> str:
+        self.calls += 1
+        return f"tok-{self.calls}"
+
+    async def aclose(self) -> None:
+        self.closed = True
+
+
+@respx.mock
+async def test_azure_openai_entra_sends_bearer_per_request_and_no_api_key() -> None:
+    route = respx.post("https://res.openai.azure.com/openai/deployments/m/chat/completions").mock(
+        side_effect=[
+            httpx.Response(200, json={"choices": [{"message": {"content": "x"}}], "usage": {}}),
+            httpx.Response(200, content=SSE),
+        ]
+    )
+    tokens = FakeTokenProvider()
+    provider = AzureOpenAIProvider(endpoint="https://res.openai.azure.com", token_provider=tokens)
+    await provider.chat("m", MESSAGES)
+    async for _ in provider.stream("m", MESSAGES):
+        pass
+    await provider.aclose()
+    first, second = route.calls[0].request, route.calls[1].request
+    assert first.headers["Authorization"] == "Bearer tok-1"
+    assert second.headers["Authorization"] == "Bearer tok-2"
+    assert "api-key" not in first.headers
+    assert tokens.closed
+
+
+def test_azure_openai_requires_exactly_one_credential() -> None:
+    with pytest.raises(ValueError):
+        AzureOpenAIProvider(endpoint="https://res.openai.azure.com")
+    with pytest.raises(ValueError):
+        AzureOpenAIProvider(
+            endpoint="https://res.openai.azure.com", api_key="k", token_provider=FakeTokenProvider()
+        )

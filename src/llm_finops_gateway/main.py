@@ -51,6 +51,7 @@ from .policy import (
 )
 from .pricing import PriceBook, UnknownModelError, money
 from .providers import Provider, ProviderError
+from .providers.azure_identity import EntraTokenProvider
 from .providers.azure_openai import AzureOpenAIProvider
 from .providers.base import TokenUsage
 from .providers.ollama import OllamaProvider
@@ -69,14 +70,17 @@ def build_providers(settings: Settings) -> dict[str, Provider]:
         )
     }
     endpoint, key = settings.azure_openai_endpoint, settings.azure_openai_api_key
-    if (endpoint is None) != (key is None):
+    entra = settings.azure_openai_auth == "entra"
+    if not entra and (endpoint is None) != (key is None):
         raise RuntimeError(
-            "LFG_AZURE_OPENAI_ENDPOINT and LFG_AZURE_OPENAI_API_KEY must be set together"
+            "LFG_AZURE_OPENAI_ENDPOINT and LFG_AZURE_OPENAI_API_KEY must be set together "
+            "(or set LFG_AZURE_OPENAI_AUTH=entra)"
         )
-    if endpoint is not None and key is not None:
+    if endpoint is not None:
         providers[ProviderKind.AZURE_OPENAI.value] = AzureOpenAIProvider(
             endpoint=endpoint,
-            api_key=key.get_secret_value(),
+            api_key=None if entra else (key.get_secret_value() if key else None),
+            token_provider=EntraTokenProvider() if entra else None,
             api_version=settings.azure_openai_api_version,
             deployments=settings.azure_openai_deployments,
             timeout=settings.request_timeout_seconds,

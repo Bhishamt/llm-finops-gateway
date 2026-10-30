@@ -29,14 +29,15 @@ src/llm_finops_gateway/
   ledger.py        SQLAlchemy ledger (cost_records, budget_counters), reserve/settle/release
   auth.py          KeyRing (SHA-256 hashes from config/keys.yaml), generate_key(), hash_key()
   attribution.py   Attribution(team, project, use_case, key_id); api_key vs headers mode
-  providers/       base.py (Provider protocol), ollama.py, azure_openai.py, openai_compat.py (ADR-0010)
+  providers/       base.py (Provider protocol), ollama.py, azure_openai.py, openai_compat.py (ADR-0010),
+                   azure_identity.py (Entra ID tokens, [azure] extra, ADR-0014)
   metrics.py       Prometheus; telemetry.py optional OTel ([otel] extra, finops.* span attrs)
   models.py        request/response models (OpenAI shape + x_finops block)
   cli.py           llm-finops-gateway serve | keys new|hash|check | pricing sync
 config/            pricing.yaml, policies.yaml, keys.yaml (hashes only, repo copy is `keys: []`)
 demo/              run_demo.py (simulated or live), policies.yaml (tiny budgets), README.md
 docs/              architecture.md, deployment.md, azure-setup.md, testing-plan.md, comparison.md,
-                   first-publish.md, adr/0001..0013
+                   first-publish.md, adr/0001..0014
 tests/             one test module per source module, 117 tests, FakeProvider in conftest.py
 ```
 
@@ -97,7 +98,7 @@ Bias toward caution over speed; for trivial tasks use judgment.
 - `make check` must be green before any commit: ruff (lint + format), mypy `--strict` on
   `src` and `tests`, pytest. Pre-commit is installed by `make install`.
 - Every module has a test module; new behaviour comes with a test in the same change.
-- Every design decision gets an ADR in `docs/adr/` (next number: 0014). ADR-0009 (evaluation
+- Every design decision gets an ADR in `docs/adr/` (next number: 0015). ADR-0009 (evaluation
   replay) is Proposed, not implemented.
 - Decimal for money everywhere; never float.
 - Secrets only via env / `SecretStr`. Never commit a raw `lfg_` key, `.env`, `*.db`, `demo/out/`.
@@ -123,7 +124,8 @@ LFG_PROVIDER=ollama llm-finops-gateway serve         # http://127.0.0.1:8080
 
 Azure OpenAI: `LFG_PROVIDER=azure_openai` plus `LFG_AZURE_OPENAI_ENDPOINT`,
 `LFG_AZURE_OPENAI_API_KEY`, `LFG_AZURE_OPENAI_DEPLOYMENTS` (model -> deployment), see
-`docs/azure-setup.md`. Tracing: `pip install -e ".[otel]"`, `LFG_OTEL_ENABLED=true`.
+`docs/azure-setup.md`. Without a key: `pip install -e ".[azure]"`, `LFG_AZURE_OPENAI_AUTH=entra`
+(ADR-0014). Tracing: `pip install -e ".[otel]"`, `LFG_OTEL_ENABLED=true`.
 
 ## Test status (docs/testing-plan.md)
 

@@ -34,6 +34,11 @@ is called out here.
   type and model version, exits non-zero on drift, rewrites the numbers in place with
   `--write` (ADR-0013). Price book rows accept `sku:` and `version:` hints.
 
+- Entra ID authentication for Azure OpenAI: `LFG_AZURE_OPENAI_AUTH=entra` sends bearer tokens
+  from `DefaultAzureCredential` (managed identity, service principal or `az login`) instead of
+  an API key; tokens are cached and refreshed per request. New optional extra `[azure]`,
+  included in the Docker image (ADR-0014).
+
 ### Changed
 - An upstream 429 is returned as `429 upstream_rate_limited` with the provider's `Retry-After`
   instead of `502 upstream_error`; the reservation is still released and nothing is recorded.
