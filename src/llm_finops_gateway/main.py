@@ -16,8 +16,8 @@ from contextlib import asynccontextmanager
 from decimal import Decimal
 from typing import Annotated, Any
 
-from fastapi import Depends, FastAPI, HTTPException, Request, Response
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi import Depends, FastAPI, Form, HTTPException, Request, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 
 from . import __version__
 from .attribution import Attribution, resolve_attribution
@@ -57,6 +57,17 @@ from .providers.azure_openai import AzureOpenAIProvider
 from .providers.base import TokenUsage
 from .providers.ollama import OllamaProvider
 from .providers.openai_compat import OpenAICompatProvider
+from .report import (
+    COOKIE,
+    ReportContext,
+    ReportScope,
+    login_error,
+    render_login,
+    render_report,
+    resolve_report_scope,
+    scope_for,
+    summary_csv,
+)
 from .telemetry import Telemetry
 
 log = logging.getLogger("llm_finops_gateway")
@@ -573,17 +584,10 @@ def create_app(
             x_finops=envelope(cost, status),
         )
 
-    @app.get("/v1/finops/summary", response_model=CostSummary)
-    async def finops_summary(
-        state: Annotated[Any, Depends(_state)],
-        team: str | None = None,
-        project: str | None = None,
-    ) -> CostSummary:
-        ledger: Ledger = state.ledger
-        book: PriceBook = state.price_book
+    def cost_summary(team: str | None, project: str | None) -> CostSummary:
         rows = ledger.summary(team=team, project=project)
         return CostSummary(
-            currency=book.currency,
+            currency=price_book.currency,
             rows=[
                 CostSummaryRow(
                     team=r.team,
@@ -599,18 +603,16 @@ def create_app(
             total_cost_usd=money(sum((r.cost_usd for r in rows), start=Decimal(0))),
         )
 
-    @app.get("/v1/finops/budgets", response_model=BudgetReport)
-    async def finops_budgets(state: Annotated[Any, Depends(_state)]) -> BudgetReport:
-        engine: PolicyEngine = state.policy_engine
-        ledger: Ledger = state.ledger
-        policies: PolicySet = state.policies
+    def budget_rows(team: str | None) -> list[TeamBudgetRow]:
         names = set(policies.teams()) | {r.team for r in ledger.summary()}
+        if team is not None:
+            names = {team}
         rows = []
         for name in sorted(names):
             effective = policies.resolve(name)
             status = engine.budget_status(name)
             if status is not None:
-                state.metrics.budget_used.labels(name).set(float(status.used_pct) / 100)
+                metrics.budget_used.labels(name).set(float(status.used_pct) / 100)
             rows.append(
                 TeamBudgetRow(
                     team=name,
@@ -621,9 +623,82 @@ def create_app(
                     budget=_budget_envelope(status),
                 )
             )
-        return BudgetReport(
-            policy_version=engine.version, month_start=month_start().isoformat(), teams=rows
+        return rows
+
+    # Reports (ADR-0016): a team key reads its own team, a finops key every team.
+    @app.get("/v1/finops/summary", response_model=CostSummary)
+    async def finops_summary(
+        scope: Annotated[ReportScope, Depends(resolve_report_scope)],
+        team: str | None = None,
+        project: str | None = None,
+    ) -> CostSummary:
+        return cost_summary(scope.narrow(team), project)
+
+    @app.get("/v1/finops/summary.csv", include_in_schema=True)
+    async def finops_summary_csv(
+        scope: Annotated[ReportScope, Depends(resolve_report_scope)],
+        team: str | None = None,
+        project: str | None = None,
+    ) -> Response:
+        summary = cost_summary(scope.narrow(team), project)
+        return Response(
+            content=summary_csv(summary.rows, summary.currency),
+            media_type="text/csv",
+            headers={"Content-Disposition": 'attachment; filename="llm-finops-summary.csv"'},
         )
+
+    @app.get("/v1/finops/budgets", response_model=BudgetReport)
+    async def finops_budgets(
+        scope: Annotated[ReportScope, Depends(resolve_report_scope)],
+    ) -> BudgetReport:
+        return BudgetReport(
+            policy_version=engine.version,
+            month_start=month_start().isoformat(),
+            teams=budget_rows(scope.team),
+        )
+
+    @app.get("/finops", response_class=HTMLResponse, include_in_schema=False)
+    async def finops_page(request: Request, team: str | None = None) -> HTMLResponse:
+        try:
+            scope = scope_for(
+                request, request.headers.get("authorization"), request.headers.get("x-team")
+            )
+        except HTTPException as exc:
+            if exc.status_code == 401:
+                return HTMLResponse(render_login())
+            raise
+        team_filter = scope.narrow(team)
+        summary = cost_summary(team_filter, None)
+        ctx = ReportContext(
+            version=__version__,
+            price_book_version=price_book.version,
+            currency=price_book.currency,
+            policy_version=engine.version,
+            providers=",".join(sorted(providers)),
+            month_start=month_start().date().isoformat(),
+            scope=scope,
+            team_filter=team if scope.team is None else None,
+            budgets=budget_rows(team_filter),
+            rows=summary.rows,
+            total=summary.total_cost_usd,
+        )
+        return HTMLResponse(render_report(ctx))
+
+    @app.post("/finops/login", include_in_schema=False)
+    async def finops_login(request: Request, key: Annotated[str, Form()]) -> Response:
+        try:
+            scope_for(request, f"Bearer {key}", None)
+        except HTTPException as exc:
+            return HTMLResponse(render_login(login_error(exc)))
+        response = RedirectResponse("/finops", status_code=303)
+        response.set_cookie(COOKIE, key, httponly=True, samesite="strict", secure=False)
+        return response
+
+    @app.get("/finops/logout", include_in_schema=False)
+    async def finops_logout() -> Response:
+        response = RedirectResponse("/finops", status_code=303)
+        response.delete_cookie(COOKIE)
+        return response
 
     @app.get("/v1/models")
     async def list_models(state: Annotated[Any, Depends(_state)]) -> dict[str, object]:

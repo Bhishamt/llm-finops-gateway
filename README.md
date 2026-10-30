@@ -305,11 +305,18 @@ teams:
 | ------ | ------------------------ | ---------------------------------------------------------- |
 | POST   | `/v1/chat/completions`   | OpenAI-compatible chat completion, `stream: true` supported |
 | GET    | `/v1/models`             | Models the price book knows, and which provider serves each |
+| GET    | `/finops`                | Report page: budgets and chargeback, HTML, no build step   |
 | GET    | `/v1/finops/summary`     | Cost grouped by team / project / model, filterable         |
+| GET    | `/v1/finops/summary.csv` | The same rows as CSV for Excel and Power BI                |
 | GET    | `/v1/finops/budgets`     | Month-to-date budget, rate limit and allow-list per team   |
 | GET    | `/metrics`               | Prometheus: requests by outcome, cost, tokens, latency, budget ratio |
 | GET    | `/healthz`               | Liveness, version, auth mode, price book and policy versions |
 | GET    | `/docs`                  | OpenAPI UI                                                 |
+
+Reports follow one access rule (ADR-0016): with `LFG_AUTH_MODE=api_key` a team key reads its
+own team, a key with `role: finops` (`keys new --role finops`) reads every team, and the HTML
+page asks for the key once and keeps it in a session cookie. How to feed Excel, Power BI or a
+database-backed BI model is in [docs/reporting.md](docs/reporting.md).
 
 ## Configuration
 

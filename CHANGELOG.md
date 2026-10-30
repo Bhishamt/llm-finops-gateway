@@ -46,9 +46,17 @@ is called out here.
   clients. Unknown request fields are rejected with 422. The budget estimate counts content
   parts, tool-call payloads and tool definitions. Ollama translates tools and JSON output.
 
+- Report page `GET /finops` (budgets, chargeback, totals; HTML, no JavaScript, refreshes every
+  minute) and `GET /v1/finops/summary.csv` for Excel and Power BI. One access rule for every
+  report view: a team key reads its own team, a key with the new `role: finops` reads every
+  team, no key is 401 in `api_key` mode; the page has a login form with a session cookie
+  (ADR-0016). `keys new --role finops`. Guidance in `docs/reporting.md`.
+
 ### Changed
 - An upstream 429 is returned as `429 upstream_rate_limited` with the provider's `Retry-After`
   instead of `502 upstream_error`; the reservation is still released and nothing is recorded.
+- `GET /v1/finops/summary` and `/v1/finops/budgets` now require a key in `api_key` mode and
+  are scoped to the key's team unless the key has `role: finops`.
 - Price book version `2026-11-02`: cached-input prices for the GPT-4o and GPT-4.1 rows and a
   `provider` on every row.
 
