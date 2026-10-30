@@ -3,8 +3,9 @@
 #   docker compose -f docker-compose.observability.yml up -d
 #   open http://localhost:3000        (admin / admin), dashboard "LLM FinOps gateway"
 #
-# Prometheus scrapes a gateway running on the host at :8080 (host.docker.internal). Change
-# LFG_METRICS_TARGET to scrape a gateway elsewhere, e.g. gateway:8080 from docker-compose.yml.
+# Prometheus scrapes a gateway running on the host at :8080 (host.docker.internal); edit
+# observability/prometheus.yml to scrape a gateway elsewhere. Prometheus keeps its data only
+# while the container exists (no volume): this is a local viewer, not a store.
 services:
   prometheus:
     image: prom/prometheus:v3.5.0
