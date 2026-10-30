@@ -405,8 +405,9 @@ open http://localhost:3000                                 # viewer without logi
 
 Where each view lives in Azure: the report page is served by the gateway itself, so it is the
 Container App's URL plus `/finops`, behind the gateway's key auth and whatever sits in front
-(Container Apps authentication with Entra ID, or APIM); finance pulls CSV or JSON into Power
-BI, or reads the ledger database; operations scrape `/metrics` with Azure Monitor managed
+(Container Apps authentication with Entra ID, or APIM); finance pulls CSV or JSON into a BI tool
+such as Power BI (documented, to be verified once a gateway runs in Azure), or reads the ledger
+database; operations scrape `/metrics` with Azure Monitor managed
 Prometheus and import this dashboard into Azure Managed Grafana; alerts go to Slack or Teams
 through the webhook, or come from Azure Monitor alert rules on the same metrics. Azure Cost
 Management only ever sees the Azure OpenAI resource's bill; the team dimension exists because
