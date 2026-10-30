@@ -2,24 +2,98 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any, ClassVar, Literal
 
-from pydantic import BaseModel, Field, SerializerFunctionWrapHandler, model_serializer
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SerializerFunctionWrapHandler,
+    model_serializer,
+)
 
-Role = Literal["system", "user", "assistant", "tool"]
+Role = Literal["system", "developer", "user", "assistant", "tool"]
+
+
+class FunctionCall(BaseModel):
+    name: str
+    arguments: str
+
+
+class ToolCall(BaseModel):
+    id: str
+    type: Literal["function"] = "function"
+    function: FunctionCall
 
 
 class ChatMessage(BaseModel):
+    """One message in the OpenAI shape. ``content`` is text, a list of content parts (text,
+    image_url, ...) or null for assistant messages that only carry ``tool_calls``."""
+
     role: Role
-    content: str
+    content: str | list[dict[str, Any]] | None = None
+    name: str | None = None
+    tool_calls: list[ToolCall] | None = None
+    tool_call_id: str | None = None
+
+    @model_serializer(mode="wrap")
+    def _omit_unset_optionals(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        data: dict[str, Any] = handler(self)
+        for key in ("name", "tool_calls", "tool_call_id"):
+            if data.get(key) is None:
+                data.pop(key, None)
+        return data
 
 
 class ChatRequest(BaseModel):
+    """The accepted OpenAI Chat Completions surface (ADR-0015). Unknown fields are rejected
+    with 422 rather than dropped; ``PASSTHROUGH`` fields reach the provider unchanged."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    PASSTHROUGH: ClassVar[tuple[str, ...]] = (
+        "tools",
+        "tool_choice",
+        "parallel_tool_calls",
+        "response_format",
+        "top_p",
+        "stop",
+        "seed",
+        "user",
+        "presence_penalty",
+        "frequency_penalty",
+        "logprobs",
+        "top_logprobs",
+    )
+
     model: str
     messages: list[ChatMessage] = Field(min_length=1)
     temperature: float | None = Field(default=None, ge=0, le=2)
     max_tokens: int | None = Field(default=None, ge=1)
+    max_completion_tokens: int | None = Field(default=None, ge=1)
     stream: bool = False
+    stream_options: dict[str, Any] | None = None  # accepted; usage is always included
+    n: int | None = Field(default=None, ge=1, le=1)
+    tools: list[dict[str, Any]] | None = None
+    tool_choice: str | dict[str, Any] | None = None
+    parallel_tool_calls: bool | None = None
+    response_format: dict[str, Any] | None = None
+    top_p: float | None = Field(default=None, ge=0, le=1)
+    stop: str | list[str] | None = None
+    seed: int | None = None
+    user: str | None = None
+    presence_penalty: float | None = Field(default=None, ge=-2, le=2)
+    frequency_penalty: float | None = Field(default=None, ge=-2, le=2)
+    logprobs: bool | None = None
+    top_logprobs: int | None = Field(default=None, ge=0, le=20)
+
+    @property
+    def output_limit(self) -> int | None:
+        """The client's output bound, whichever spelling it used."""
+        return self.max_tokens if self.max_tokens is not None else self.max_completion_tokens
+
+    def passthrough(self) -> dict[str, Any]:
+        return {k: v for k in self.PASSTHROUGH if (v := getattr(self, k)) is not None}
 
 
 class PromptTokensDetails(BaseModel):

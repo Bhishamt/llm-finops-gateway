@@ -18,6 +18,7 @@ class CompletionResult:
     reasoning_tokens: int = (
         0  # subset of output_tokens spent on hidden reasoning (billed as output)
     )
+    tool_calls: list[dict[str, Any]] | None = None  # OpenAI shape: id, type, function
     raw: dict[str, Any] = field(default_factory=dict)
 
 
@@ -37,6 +38,7 @@ class StreamChunk:
     delta: str = ""
     finish_reason: str | None = None
     usage: TokenUsage | None = None
+    tool_calls: list[dict[str, Any]] | None = None  # OpenAI delta.tool_calls fragments
 
 
 def openai_usage(usage: dict[str, Any]) -> TokenUsage:
@@ -55,13 +57,18 @@ def openai_stream_chunk(data: dict[str, Any]) -> StreamChunk:
     """Map one ``chat.completion.chunk`` object. Chunks without choices carry usage or
     (on Azure) prompt filter results."""
     choices = data.get("choices") or []
-    delta, finish = "", None
+    delta, finish, tool_calls = "", None, None
     if choices:
-        delta = str((choices[0].get("delta") or {}).get("content") or "")
+        part: dict[str, Any] = choices[0].get("delta") or {}
+        delta = str(part.get("content") or "")
+        tool_calls = part.get("tool_calls") or None
         finish = choices[0].get("finish_reason") or None
     usage = data.get("usage")
     return StreamChunk(
-        delta=delta, finish_reason=finish, usage=openai_usage(usage) if usage else None
+        delta=delta,
+        finish_reason=finish,
+        usage=openai_usage(usage) if usage else None,
+        tool_calls=tool_calls,
     )
 
 
@@ -99,21 +106,23 @@ class Provider(Protocol):
     async def chat(
         self,
         model: str,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         *,
         temperature: float | None = None,
         max_tokens: int | None = None,
         max_completion_tokens: int | None = None,
+        extra: dict[str, Any] | None = None,
     ) -> CompletionResult: ...
 
     def stream(
         self,
         model: str,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         *,
         temperature: float | None = None,
         max_tokens: int | None = None,
         max_completion_tokens: int | None = None,
+        extra: dict[str, Any] | None = None,
     ) -> AsyncIterator[StreamChunk]: ...
 
     async def aclose(self) -> None: ...

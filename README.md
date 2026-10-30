@@ -232,6 +232,16 @@ and sometimes per model version; a row can say `sku: regional` or `version: 2024
 those. Nothing is looked up at request time: the price book stays a reviewed file, and
 `--write` produces the diff for a pull request (ADR-0013).
 
+### What of the OpenAI API is accepted
+
+Everything an agent or a structured-output client sends is passed through to the provider:
+`tools`, `tool_choice`, `parallel_tool_calls`, `response_format`, `top_p`, `stop`, `seed`,
+`user`, penalties, `logprobs`; messages may carry content parts (text, images), `tool_calls`
+and `tool_call_id`, and responses return `tool_calls` with `finish_reason: tool_calls`, also
+while streaming. `max_tokens` and `max_completion_tokens` are both accepted. A field the
+gateway does not know is a `422` naming it, never a silent drop (ADR-0015). Ollama gets the
+subset it understands, with its tool-call shape translated.
+
 ### Streaming
 
 `stream: true` returns server-sent events in the OpenAI chunk format, so `client.chat.completions.create(..., stream=True)`

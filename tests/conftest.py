@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -45,17 +46,19 @@ class FakeProvider:
         self.closed = False
         self.fail_with: Exception | None = None
         self.stream_parts = ["hello ", "from fake"]
+        self.tool_calls: list[dict[str, Any]] | None = None  # returned instead of text
         self.fail_mid_stream = False  # raise fail_with after the first streamed part
         self.stream_without_usage = False  # end the stream with no usage chunk
 
     async def chat(
         self,
         model: str,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         *,
         temperature: float | None = None,
         max_tokens: int | None = None,
         max_completion_tokens: int | None = None,
+        extra: dict[str, Any] | None = None,
     ) -> CompletionResult:
         self.calls.append(
             {
@@ -64,28 +67,38 @@ class FakeProvider:
                 "temperature": temperature,
                 "max_tokens": max_tokens,
                 "max_completion_tokens": max_completion_tokens,
+                "extra": extra or {},
             }
         )
         if self.fail_with is not None:
             raise self.fail_with
         return CompletionResult(
-            content="hello from fake",
+            content="" if self.tool_calls else "hello from fake",
             input_tokens=self.input_tokens,
             output_tokens=self.output_tokens,
             cached_input_tokens=self.cached_input_tokens,
             reasoning_tokens=self.reasoning_tokens,
+            finish_reason="tool_calls" if self.tool_calls else "stop",
+            tool_calls=self.tool_calls,
         )
 
     async def stream(
         self,
         model: str,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         *,
         temperature: float | None = None,
         max_tokens: int | None = None,
         max_completion_tokens: int | None = None,
+        extra: dict[str, Any] | None = None,
     ) -> AsyncIterator[StreamChunk]:
-        self.calls.append({"model": model, "messages": messages, "stream": True})
+        self.calls.append(
+            {"model": model, "messages": messages, "stream": True, "extra": extra or {}}
+        )
+        if self.tool_calls:
+            yield StreamChunk(
+                tool_calls=[{"index": i, **tc} for i, tc in enumerate(self.tool_calls)]
+            )
         if self.fail_with is not None and not self.fail_mid_stream:
             raise self.fail_with
         for i, part in enumerate(self.stream_parts):

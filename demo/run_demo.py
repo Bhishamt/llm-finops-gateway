@@ -86,11 +86,12 @@ class SimulatedProvider:
     async def chat(
         self,
         model: str,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         *,
         temperature: float | None = None,
         max_tokens: int | None = None,
         max_completion_tokens: int | None = None,
+        extra: dict[str, Any] | None = None,
     ) -> Any:
         from llm_finops_gateway.providers.base import CompletionResult
 
@@ -104,11 +105,12 @@ class SimulatedProvider:
     async def stream(
         self,
         model: str,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         *,
         temperature: float | None = None,
         max_tokens: int | None = None,
         max_completion_tokens: int | None = None,
+        extra: dict[str, Any] | None = None,
     ) -> Any:
         from llm_finops_gateway.providers.base import StreamChunk, TokenUsage
 

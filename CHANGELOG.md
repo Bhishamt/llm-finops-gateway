@@ -39,6 +39,13 @@ is called out here.
   an API key; tokens are cached and refreshed per request. New optional extra `[azure]`,
   included in the Docker image (ADR-0014).
 
+- OpenAI request surface (ADR-0015): `tools`, `tool_choice`, `parallel_tool_calls`,
+  `response_format`, `top_p`, `stop`, `seed`, `user`, penalties and `logprobs` are passed
+  through; messages accept content parts, `tool_calls`, `tool_call_id` and the `developer`
+  role; responses and streams return `tool_calls`. `max_completion_tokens` is accepted from
+  clients. Unknown request fields are rejected with 422. The budget estimate counts content
+  parts, tool-call payloads and tool definitions. Ollama translates tools and JSON output.
+
 ### Changed
 - An upstream 429 is returned as `429 upstream_rate_limited` with the provider's `Retry-After`
   instead of `502 upstream_error`; the reservation is still released and nothing is recorded.

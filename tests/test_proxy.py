@@ -300,3 +300,94 @@ def test_reasoning_model_translates_generation_params(tmp_path: Path, ledger: Le
         None,
         40,
     )
+
+
+TOOL = {
+    "type": "function",
+    "function": {
+        "name": "get_weather",
+        "parameters": {"type": "object", "properties": {"city": {"type": "string"}}},
+    },
+}
+CALL = {
+    "id": "call_1",
+    "type": "function",
+    "function": {"name": "get_weather", "arguments": '{"city": "Budapest"}'},
+}
+
+
+def test_tools_are_forwarded_and_tool_calls_returned(
+    client: TestClient, fake_provider: FakeProvider
+) -> None:
+    fake_provider.tool_calls = [CALL]
+    body = {
+        **BODY,
+        "tools": [TOOL],
+        "tool_choice": "auto",
+        "response_format": {"type": "json_object"},
+        "top_p": 0.9,
+        "seed": 7,
+        "user": "u-1",
+    }
+    r = client.post("/v1/chat/completions", json=body, headers=ATTR_HEADERS)
+    assert r.status_code == 200, r.text
+    assert fake_provider.calls[0]["extra"] == {
+        "tools": [TOOL],
+        "tool_choice": "auto",
+        "response_format": {"type": "json_object"},
+        "top_p": 0.9,
+        "seed": 7,
+        "user": "u-1",
+    }
+    choice = r.json()["choices"][0]
+    assert choice["finish_reason"] == "tool_calls"
+    assert choice["message"] == {"role": "assistant", "content": None, "tool_calls": [CALL]}
+
+
+def test_unknown_request_field_is_rejected_loudly(
+    client: TestClient, fake_provider: FakeProvider
+) -> None:
+    r = client.post("/v1/chat/completions", json={**BODY, "foo": 1}, headers=ATTR_HEADERS)
+    assert r.status_code == 422
+    assert "foo" in r.text
+    assert fake_provider.calls == []
+
+
+def test_tool_results_and_content_parts_pass_through(
+    client: TestClient, fake_provider: FakeProvider
+) -> None:
+    messages = [
+        {"role": "user", "content": [{"type": "text", "text": "weather?"}]},
+        {"role": "assistant", "content": None, "tool_calls": [CALL]},
+        {"role": "tool", "tool_call_id": "call_1", "content": "sunny"},
+    ]
+    r = client.post(
+        "/v1/chat/completions", json={**BODY, "messages": messages}, headers=ATTR_HEADERS
+    )
+    assert r.status_code == 200, r.text
+    assert fake_provider.calls[0]["messages"] == [
+        {"role": "user", "content": [{"type": "text", "text": "weather?"}]},
+        {"role": "assistant", "tool_calls": [CALL]},
+        {"role": "tool", "content": "sunny", "tool_call_id": "call_1"},
+    ]
+
+
+def test_streaming_forwards_tool_call_deltas(
+    client: TestClient, fake_provider: FakeProvider
+) -> None:
+    fake_provider.tool_calls = [CALL]
+    r = client.post("/v1/chat/completions", json={**BODY, "stream": True}, headers=ATTR_HEADERS)
+    events = _events(r.text)
+    assert events[0]["choices"][0]["delta"]["tool_calls"] == [{"index": 0, **CALL}]
+    assert events[-1] == "[DONE]"
+
+
+def test_max_completion_tokens_is_accepted_from_clients(
+    client: TestClient, fake_provider: FakeProvider
+) -> None:
+    body = {**BODY, "max_completion_tokens": 33}
+    r = client.post("/v1/chat/completions", json=body, headers=ATTR_HEADERS)
+    assert r.status_code == 200, r.text
+    assert fake_provider.calls[0]["max_completion_tokens"] == 33
+    r = client.post("/v1/chat/completions", json={**BODY, "n": 2}, headers=ATTR_HEADERS)
+    assert r.status_code == 422

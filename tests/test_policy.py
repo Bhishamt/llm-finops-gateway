@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from decimal import Decimal
 from pathlib import Path
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -352,3 +353,16 @@ def test_http_metrics_endpoint(pclient: TestClient) -> None:
     text = pclient.get("/metrics").text
     assert 'lfg_requests_total{model="priced",outcome="ok",team="platform"} 1.0' in text
     assert "lfg_cost_usd_total" in text and "lfg_budget_used_ratio" in text
+
+
+def test_estimate_counts_content_parts_tool_calls_and_tool_definitions() -> None:
+    from llm_finops_gateway.policy import estimate_tokens
+
+    messages: list[dict[str, Any]] = [
+        {"role": "user", "content": [{"type": "text", "text": "x" * 40}, {"type": "image_url"}]},
+        {"role": "assistant", "content": None, "tool_calls": [{"id": "c", "function": {}}]},
+    ]
+    plain, _ = estimate_tokens(messages, None, 10)
+    with_tools, out = estimate_tokens(messages, None, 10, extra_chars=400)
+    assert plain >= 40 // 4 + 16
+    assert with_tools == plain + 100 and out == 10
