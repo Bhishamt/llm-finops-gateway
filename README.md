@@ -344,6 +344,8 @@ Environment variables (prefix `LFG_`; a `.env` file is read if present):
 | `LFG_POLICIES_PATH`             | `config/policies.yaml`    | missing file = no policies              |
 | `LFG_DATABASE_URL`              | `sqlite:///./gateway.db`  | any SQLAlchemy URL                      |
 | `LFG_REQUEST_TIMEOUT_SECONDS`   | `120`                     |                                         |
+| `LFG_ALERT_WEBHOOK_URL`         |                           | Slack/Teams incoming webhook or any JSON endpoint; empty = off |
+| `LFG_ALERT_COOLDOWN_SECONDS`    | `3600`                    | same event per team/provider at most this often |
 | `LFG_METRICS_ENABLED`           | `true`                    | serve `/metrics`                        |
 | `LFG_OTEL_ENABLED`              | `false`                   | needs `pip install ".[otel]"`; exporter via `OTEL_EXPORTER_OTLP_*` |
 | `LFG_OTEL_SERVICE_NAME`         | `llm-finops-gateway`      |                                         |
@@ -360,6 +362,20 @@ export OTEL_EXPORTER_OTLP_HEADERS="Authorization=Basic%20$(printf 'pk-lf-...:sk-
 Every request span carries `finops.team`, `finops.project`, `finops.use_case`, `finops.model`,
 `finops.key_id`, `finops.cost_usd`, `finops.input_tokens`, `finops.output_tokens`,
 `finops.request_id` and, when rejected, `finops.policy_violation`.
+
+## Alerts to Slack, Teams or any webhook
+
+```dotenv
+LFG_ALERT_WEBHOOK_URL=https://hooks.slack.com/services/T000/B000/xxxx
+LFG_ALERT_COOLDOWN_SECONDS=3600
+```
+
+The gateway posts one JSON event (`text` plus structured fields) when a team crosses its
+warning threshold (`budget_warn`), when a call is refused for budget (`budget_block`), and when
+the provider fails (`upstream_error`, `upstream_rate_limited`). The same event for the same
+team or provider is sent once per cooldown. Delivery runs in the background and never delays
+or fails a request (ADR-0017). Thresholds and routing for a monitoring stack belong to the
+Prometheus metrics below.
 
 ## Grafana dashboard and SDK examples
 

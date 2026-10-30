@@ -96,6 +96,15 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./gateway.db"
     request_timeout_seconds: float = 120.0
 
+    # Alerts (ADR-0017): one JSON POST per budget or upstream event, once per cooldown
+    alert_webhook_url: SecretStr | None = Field(
+        default=None,
+        description="Slack/Teams incoming webhook or any JSON endpoint; empty disables alerts.",
+    )
+    alert_cooldown_seconds: int = Field(
+        default=3600, ge=0, description="Same event for the same team/provider at most this often."
+    )
+
     # Observability
     metrics_enabled: bool = True
     otel_enabled: bool = Field(
