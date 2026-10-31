@@ -84,6 +84,11 @@ is called out here.
   named (traffic that bypassed the gateway, price book SKU mismatch) (ADR-0018). Test plan 4.5
   reconciliation of 2026-10-30 documented.
 
+- `deploy/azure/`: Bicep for Azure Container Apps with a user-assigned managed identity
+  (Cognitive Services OpenAI User on the account, AcrPull on the registry), Azure Files for
+  the SQLite ledger, Log Analytics, team key hashes as a secret file; README with costs and
+  the production additions.
+
 ### Changed
 - An upstream 429 is returned as `429 upstream_rate_limited` with the provider's `Retry-After`
   instead of `502 upstream_error`; the reservation is still released and nothing is recorded.

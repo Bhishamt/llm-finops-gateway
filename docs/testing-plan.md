@@ -208,6 +208,23 @@ docker compose down
 
 - [ ] Image builds, runs as non-root, healthcheck green (`docker ps` shows `healthy`).
 
+## 5b. Azure Container Apps (20 min, costs about 0.5 USD/day while it runs)
+
+`deploy/azure/README.md`, end to end: registry, cloud build, keys, Bicep.
+
+| # | Check | Expected |
+| - | ----- | -------- |
+| 5b.1 | `az deployment group create ... main.bicep` | `Succeeded`, output `url` |
+| 5b.2 | `GET /healthz` on the public URL | `auth_mode: api_key`, providers listed |
+| 5b.3 | chat with the team key | HTTP 200 through the managed identity (no provider key in the app) |
+| 5b.4 | `/finops` without a key, then with the finops key | login form, then the all-teams page |
+| 5b.5 | restart the revision | the ledger on the Azure Files share survives |
+
+- [x] 5b.1 to 5b.4 pass 2026-10-31. First attempt failed at startup with `sqlite3 ... database
+      is locked` on the Azure Files share; fixed with the `nobrl,uid=10001,gid=10001` mount
+      options in the Bicep. The identity's `Cognitive Services OpenAI User` role worked on the
+      first call this time (the user's own assignment the day before took 35 minutes).
+
 ## 6. Known limitations to confirm, not fix
 
 - [ ] A call whose *estimate* does not fit the remaining budget is rejected even if its actual

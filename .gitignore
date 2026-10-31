@@ -27,3 +27,6 @@ demo/out/
 
 # Example dependencies
 examples/typescript/node_modules/
+
+# Azure deployment inputs with key hashes (generated per environment)
+deploy/azure/keys.yaml
