@@ -15,7 +15,8 @@ prerequisite. `usePostgres=false` swaps the database for an Azure Files share wi
 | Container App, 0.25 vCPU / 0.5 GiB, one replica always on | ~0.45 USD | consumption plan after the monthly free grant; `minReplicas=0` makes it near zero when idle |
 | Container Apps environment, Log Analytics | ~0 | 5 GB/month of logs are free |
 | Container Registry Basic | ~0.17 USD | holds the image; `az acr build` builds in the cloud |
-| PostgreSQL Flexible Server, Burstable B1ms, 32 GB | ~0.55 USD | the ledger; 7-day backups included |
+| PostgreSQL Flexible Server, Burstable B1ms, 32 GB | ~0.55 USD | the ledger; 7-day backups included (B2ms about 0.7 USD; some subscriptions get no Burstable SKU in some regions, hence `postgresLocation`) |
+| Key Vault standard | ~0 | a few secrets, a few operations |
 | Azure OpenAI | usage | the calls themselves |
 
 About 1.2 USD a day for a demo that is always on with its own database; with
@@ -23,35 +24,76 @@ About 1.2 USD a day for a demo that is always on with its own database; with
 
 ## Steps
 
+Everything lands in one resource group, including the Azure OpenAI account and its model
+deployments (`createAzureOpenAi=true` in the commands below). The intent is one region as well;
+`postgresLocation` exists for the case where that is not possible. To reuse an existing account
+instead, pass `createAzureOpenAi=false`, `azureOpenAiResourceId` and `azureOpenAiEndpoint`.
+
+### Region decision for the reference deployment (2026-10-31)
+
+The gateway and the Azure OpenAI account run in **Sweden Central**: it is the EU region where
+the models we price (gpt-4.1-mini, gpt-5-mini) have pay-as-you-go `GlobalStandard` SKUs and
+where the test account already lived. The PostgreSQL ledger runs in **North Europe**, because
+on this free-trial subscription Sweden Central answers `SkuNotAvailable` for every Burstable
+PostgreSQL SKU (B1ms and B2ms tried), West Europe is closed to new subscriptions ("the selected
+region is currently not accepting new customers"), and North Europe has no pay-as-you-go SKU
+for the models. One region for everything was therefore not available to this subscription,
+not a design choice. The database round trip Sweden Central to North Europe adds a few
+milliseconds per call, which is irrelevant next to the model latency. On a subscription
+without these regional limits set `postgresLocation` to the app's region, or deploy to France
+Central, which had both at the time of writing. Data residency: both regions are EU; if the
+ledger must stay in the same country as the app, drop `usePostgres` to `false` (SQLite on
+Azure Files in the app's region) until the subscription can create PostgreSQL there.
+
 ```bash
-RG=rg-llm-finops-gateway-dev            # the Azure OpenAI resource's group, or a new one
-LOC=swedencentral
+RG=rg-llm-finops-gateway
+LOC=uksouth
 ACR=lfgacr$RANDOM                       # globally unique, lowercase
-AOAI_ID=$(az cognitiveservices account show -n <aoai-name> -g <aoai-rg> --query id -o tsv)
-AOAI_EP=$(az cognitiveservices account show -n <aoai-name> -g <aoai-rg> --query properties.endpoint -o tsv)
+az group create -n $RG -l $LOC
 
 # 1. Registry and image (built in the cloud from this checkout; nothing to push from the laptop)
 az acr create -n $ACR -g $RG -l $LOC --sku Basic
 az acr build -r $ACR -t llm-finops-gateway:main .
 
-# 2. Team keys: generate, keep the raw keys in your secret store, pass the hashes file
-llm-finops-gateway keys new --team platform --id platform-azure           # paste into keys.yaml
-llm-finops-gateway keys new --team finops --id finops-report --role finops
-cp config/keys.yaml deploy/azure/keys.yaml  # with the entries added; git-ignored
-
-# 3. Everything else (the PostgreSQL password goes to your secret store; clientIp is optional)
-PGPASS=$(openssl rand -base64 24 | tr -d '/+=')
+# 2. Everything in Azure (first run: an empty keys file is fine, keys come in step 3)
+printf 'version: "init"\nkeys: []\n' > deploy/azure/keys.yaml
 az deployment group create -g $RG -f deploy/azure/main.bicep \
   -p image=$ACR.azurecr.io/llm-finops-gateway:main \
-  -p azureOpenAiResourceId=$AOAI_ID -p azureOpenAiEndpoint=$AOAI_EP \
-  -p deployments='{"gpt-4.1-mini":"gpt-4.1-mini-dev"}' \
+  -p createAzureOpenAi=true \
   -p keysYaml=@deploy/azure/keys.yaml -p reportRates='{"EUR":0.88}' \
-  -p postgresPassword=$PGPASS -p clientIp=$(curl -s https://api.ipify.org) \
-  --query properties.outputs.url.value -o tsv
+  -p adminObjectId=$(az ad signed-in-user show --query id -o tsv) \
+  -p clientIp=$(curl -s https://api.ipify.org) \
+  --query properties.outputs -o json
+# outputs: url, keyVaultName, postgresHost, azureOpenAiResourceId, azureOpenAiEndpoint
+# modelDeployments defaults to one gpt-4.1-mini GlobalStandard deployment named gpt-4.1-mini;
+# pass -p modelDeployments=@deployments.json for more (name, model, version, sku, capacity).
+
+# 3. Team keys: hashes into keys.yaml, raw keys into Key Vault; then redeploy with the hashes
+deploy/azure/keys.sh <keyVaultName> platform:platform-azure finops:finops-report:finops
+az deployment group create -g $RG -f deploy/azure/main.bicep ... -p keysYaml=@deploy/azure/keys.yaml \
+  -p postgresPassword=$(az keyvault secret show --vault-name <keyVaultName> --name postgres-password --query value -o tsv)
 ```
 
+## Where the secrets are
+
+Everything a person may need to log in or connect is in the Key Vault the deployment creates
+(RBAC mode; the deployer gets Key Vault Secrets Officer, the app's identity Secrets User):
+
+| Secret | What |
+| --- | --- |
+| `team-key-<id>` | the raw team keys from `keys.sh` (`lfg_...`): sign in to `/finops`, call the API |
+| `postgres-password` | admin password of `lfgadmin`; generated on the first deployment, pass it back on later runs to keep it |
+| `database-url` | the SQLAlchemy URL the app uses (`LFG_DATABASE_URL`, read by the app from Key Vault with its identity) |
+
+```bash
+az keyvault secret show --vault-name <keyVaultName> --name team-key-finops-report --query value -o tsv
+```
+
+The gateway itself stores only SHA-256 hashes of the team keys (the `keysYaml` parameter) and
+never the raw values.
+
 The ledger tables are created on first start. For Power BI or any read-only consumer, add a
-read-only role once (from a machine on the `clientIp` rule):
+read-only role once (from a machine on the `clientIp` rule; the admin password is in Key Vault):
 
 ```sql
 CREATE ROLE reporting LOGIN PASSWORD '...';
@@ -89,5 +131,5 @@ open $URL/finops            # sign in with the finops key
 | Private database access | VNet-integrated environment and a private endpoint on the Flexible Server instead of the Azure-services firewall rule |
 | Only signed-in staff on `/finops` | Container Apps authentication (Entra ID) in front of the app, or API Management |
 | Private traffic to Azure OpenAI | VNet-integrated environment and a private endpoint on the account |
-| Team keys as secrets with rotation | Key Vault secret referenced from the Container App instead of the inline parameter |
+| Key rotation | add a new entry with `keys.sh`, redeploy, switch the client, set `disabled: true` on the old entry |
 | Dashboards and alerts | Azure Monitor managed Prometheus scraping `/metrics`, Azure Managed Grafana with `grafana/llm-finops-gateway.json` |
