@@ -56,9 +56,10 @@ once a gateway runs in Azure with a public URL, which Power BI needs (it cannot 
   team leads should only see their rows there. Schedule the refresh in the Power BI service
   through a gateway or a public endpoint.
 - **Power BI with history and trends**: point Power BI at the ledger database instead of the
-  endpoint. The `cost_records` table has the timestamp, team, project, use case, model,
-  provider, token counts, cost and price book version per call. SQLite is fine for a laptop;
-  for a shared deployment use PostgreSQL (`LFG_DATABASE_URL`) and a read-only database user.
+  endpoint, with the read-only `lfg_reporting` role (`database-url-reporting` in Key Vault on
+  the Azure deployment). The `cost_records` table has the timestamp, team, project, use case,
+  model, provider, token counts, cost and price book version per call; see
+  [database.md](database.md).
 
 ## Where each view lives in Azure
 

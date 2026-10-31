@@ -83,7 +83,9 @@ Everything a person may need to log in or connect is in the Key Vault the deploy
 | --- | --- |
 | `team-key-<id>` | the raw team keys from `keys.sh` (`lfg_...`): sign in to `/finops`, call the API |
 | `postgres-password` | admin password of `lfgadmin`; generated on the first deployment, pass it back on later runs to keep it |
-| `database-url` | the SQLAlchemy URL the app uses (`LFG_DATABASE_URL`, read by the app from Key Vault with its identity) |
+| `database-url` | the SQLAlchemy URL the app uses (`LFG_DATABASE_URL`, read by the app from Key Vault with its identity); `lfg_app` after `db_roles.py` |
+| `postgres-app-password`, `postgres-reporting-password` | passwords of `lfg_app` and `lfg_reporting` (`db_roles.py`) |
+| `database-url-reporting` | read-only URL for Power BI, psql, `ledger reconcile` |
 
 ```bash
 az keyvault secret show --vault-name <keyVaultName> --name team-key-finops-report --query value -o tsv
@@ -92,13 +94,13 @@ az keyvault secret show --vault-name <keyVaultName> --name team-key-finops-repor
 The gateway itself stores only SHA-256 hashes of the team keys (the `keysYaml` parameter) and
 never the raw values.
 
-The ledger tables are created on first start. For Power BI or any read-only consumer, add a
-read-only role once (from a machine on the `clientIp` rule; the admin password is in Key Vault):
-
-```sql
-CREATE ROLE reporting LOGIN PASSWORD '...';
-GRANT CONNECT ON DATABASE lfg TO reporting;
-GRANT SELECT ON ALL TABLES IN SCHEMA public TO reporting;
+# 4. Database roles, once: the app stops running as the admin, readers get a read-only role
+pip install -e ".[postgres]"
+python deploy/azure/db_roles.py --vault <keyVaultName> --resource-group $RG
+# creates lfg_app (gateway) and lfg_reporting (Power BI), stores their passwords and URLs in
+# Key Vault, switches database-url to lfg_app and restarts the app. On later deployments pass
+#   -p databaseUrl="$(az keyvault secret show --vault-name <keyVaultName> --name database-url --query value -o tsv)"
+# so the template keeps the app-role URL. Schema and grants: docs/database.md.
 ```
 
 The role assignment on the Azure OpenAI account can take up to half an hour to reach the

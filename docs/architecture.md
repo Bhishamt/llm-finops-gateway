@@ -89,7 +89,9 @@ book at Azure's list prices offline (ADR-0013).
 `budget_counters` (one row per team and UTC month): `spent_usd`, `reserved_usd`. Enforcement
 reads this row; reports read `cost_records`.
 
-No prompt or completion text is stored.
+No prompt or completion text is stored. Engines, the full column list, the PostgreSQL roles
+(`lfgadmin` owns, `lfg_app` writes, `lfg_reporting` reads) and operations are in
+[`database.md`](database.md).
 
 ## Cost model
 
@@ -105,8 +107,8 @@ true` switches the request to `max_completion_tokens`; `provider:` picks the ada
 Azure Container Apps ── llm-finops-gateway ──▶ Azure OpenAI (private endpoint)
    managed identity         │   │                 role: Cognitive Services OpenAI User
    (no provider key)        │   └── /finops, /v1/finops/* ──▶ Power BI (chargeback)
-   Key Vault (team keys)    │
-                     Azure Database for PostgreSQL (ledger)
+   Key Vault (secrets)      │
+                     Azure Database for PostgreSQL (ledger; app writes as lfg_app, BI reads as lfg_reporting)
    /metrics ──▶ Azure Monitor managed Prometheus ──▶ Azure Managed Grafana (dashboard)
    alerts  ──▶ Slack / Teams webhook
 ```

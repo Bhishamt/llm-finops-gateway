@@ -220,6 +220,7 @@ docker compose down
 | 5b.4 | `/finops` without a key, then with the finops key | login form, then the all-teams page |
 | 5b.5 | restart the revision | the ledger on the Azure Files share survives |
 
+- [x] 5b.7 `deploy/azure/db_roles.py`: `lfg_app` and `lfg_reporting` created, grants verified from the database; the app's connections show as `lfg_app`, a call through the public URL still lands; `lfg_reporting` can SELECT and gets `permission denied` on INSERT (2026-10-31).
 - [x] 5b.6 PostgreSQL Flexible Server (North Europe, B1ms) as the ledger: a call through the public URL lands in `cost_records`, read back directly from the laptop; the app reads `database-url` from Key Vault with its identity; raw team keys and the admin password are in the vault (2026-10-31).
 - [x] 5b.1 to 5b.4 pass 2026-10-31. First attempt failed at startup with `sqlite3 ... database
       is locked` on the Azure Files share; fixed with the `nobrl,uid=10001,gid=10001` mount
