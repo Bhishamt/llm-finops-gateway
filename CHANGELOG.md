@@ -92,6 +92,10 @@ is called out here.
   with its identity) and the raw team keys (`keys.sh`); the template can create the Azure
   OpenAI account and model deployments too (`createAzureOpenAi`); `postgresLocation` and
   `postgresSku` parameters, with the region decision recorded in the README.
+- `deploy/azure/db_roles.py`: `lfg_app` (write) and `lfg_reporting` (read-only) PostgreSQL
+  roles with passwords and URLs in Key Vault; the gateway stops running as the admin. Bicep
+  `databaseUrl` parameter keeps the app-role URL across redeployments. `docs/database.md`
+  documents engines, schema, roles and operations.
 - `[postgres]` extra (psycopg); the ledger is tested against a real PostgreSQL
   (`tests/test_ledger_postgres.py`, runs when `LFG_TEST_DATABASE_URL` is set); the Docker
   image includes the driver.

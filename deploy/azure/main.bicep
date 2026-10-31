@@ -69,6 +69,10 @@ param postgresPassword string = newGuid()
 @description('Object id of the person deploying; gets Key Vault Secrets Officer so secrets can be read in the portal or with az keyvault secret show.')
 param adminObjectId string
 
+@description('Connection URL the app should use; empty = the admin URL. After deploy/azure/db_roles.py pass the lfg_app URL from Key Vault so redeployments keep it.')
+@secure()
+param databaseUrl string = ''
+
 @description('Optional client IPv4 address allowed to reach PostgreSQL directly (laptop, Power BI Desktop); empty = none.')
 param clientIp string = ''
 
@@ -213,9 +217,10 @@ resource postgresClientAccess 'Microsoft.DBforPostgreSQL/flexibleServers/firewal
   properties: { startIpAddress: clientIp, endIpAddress: clientIp }
 }
 
-var databaseUrl = usePostgres
+var adminDatabaseUrl = usePostgres
   ? 'postgresql+psycopg://${postgresUser}:${uriComponent(postgresPassword)}@${postgres!.properties.fullyQualifiedDomainName}:5432/${postgresDb}?sslmode=require'
   : 'sqlite:////data/gateway.db'
+var effectiveDatabaseUrl = empty(databaseUrl) ? adminDatabaseUrl : databaseUrl
 
 resource identity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
   name: '${name}-identity'
@@ -260,7 +265,7 @@ resource secretPgPassword 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (u
 resource secretDatabaseUrl 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
   parent: vault
   name: 'database-url'
-  properties: { value: databaseUrl, contentType: 'SQLAlchemy URL used by the gateway (LFG_DATABASE_URL)' }
+  properties: { value: effectiveDatabaseUrl, contentType: 'SQLAlchemy URL used by the gateway (LFG_DATABASE_URL)' }
 }
 
 // Pull from the registry in this resource group with the identity, no admin user needed.

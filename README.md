@@ -442,9 +442,10 @@ a tool-call round trip, and a rejected call.
 [`deploy/azure/`](deploy/azure/) has one Bicep file and a short README: a Container App with a
 user-assigned managed identity that calls Azure OpenAI without a key (ADR-0014), an Azure
 Database for PostgreSQL for the ledger (SQLite on Azure Files as the cheap fallback), Log
-Analytics, and the image built in the cloud with `az acr build`. About 1.2 USD a day for an
-always-on demo; what to add for production is listed there (Entra ID in front of `/finops`,
-private networking, Key Vault).
+Analytics, a Key Vault for the secrets, and the image built in the cloud with `az acr build`.
+About 1.2 USD a day for an always-on demo; what to add for production is listed there (Entra
+ID in front of `/finops`, private networking). The ledger schema and the database roles are
+in [docs/database.md](docs/database.md).
 
 ## Docker
 
