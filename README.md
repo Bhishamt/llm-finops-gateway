@@ -47,6 +47,14 @@ A 300-call simulation across five teams (`python demo/run_demo.py`, no API keys 
 
 Unallocated spend: **0.00 USD**, by construction.
 
+Against a real bill: on 2026-10-30 the gateway ran 983 calls on an Azure OpenAI deployment.
+The next day Azure Cost Management showed 65,870 tokens and 0.096501 USD for the resource; the
+ledger had 65,096 tokens and, priced at the deployment's SKU, 0.095241 USD. The difference is
+774 tokens from direct API tests that bypassed the gateway. The only other gap was a price
+book mismatch (regional SKU billed, global price in the book, 0.0123 USD), which
+`pricing sync --deployment regional` reports. Details in
+[docs/testing-plan.md](docs/testing-plan.md#reconciliation-of-2026-10-30-against-azure-cost-management-run-2026-10-31).
+
 ## Why not LiteLLM, Portkey or an API-management gateway?
 
 Those are good routing gateways and you may already run one. This project is deliberately
@@ -244,6 +252,18 @@ and `tool_call_id`, and responses return `tool_calls` with `finish_reason: tool_
 while streaming. `max_tokens` and `max_completion_tokens` are both accepted. A field the
 gateway does not know is a `422` naming it, never a silent drop (ADR-0015). Ollama gets the
 subset it understands, with its tool-call shape translated.
+
+### Proving the ledger against the bill: `ledger reconcile`
+
+```bash
+llm-finops-gateway ledger reconcile --resource /subscriptions/.../accounts/<aoai> --day 2026-10-30
+```
+
+Asks Azure Cost Management for that day's token meters of the resource (your Entra identity,
+`Cost Management Reader` is enough) and prints, per model, the ledger's calls, tokens and cost
+next to Azure's tokens and USD cost and the SKU Azure billed. A positive token delta is traffic
+that bypassed the gateway; a cost delta with matching tokens is a price book SKU mismatch,
+which `pricing sync --deployment` fixes (ADR-0018).
 
 ### Streaming
 
@@ -443,7 +463,7 @@ Architecture notes: [docs/architecture.md](docs/architecture.md). Operations:
 - **Next**: evaluation replay and regression scoring ([ADR-0009](docs/adr/0009-evaluation-replay.md),
   design proposed); OIDC attribution (Keycloak, Entra ID) alongside team keys.
 - **Then**: amortised and shared-pool pricing for
-  self-hosted models with token budgets; `ledger reconcile` CLI.
+  self-hosted models with token budgets.
 - **Later**: PII policy (Presidio); shared rate limits for multi-replica deployments;
   Terraform module for Azure Container Apps + Key Vault + PostgreSQL; Grafana dashboard.
 

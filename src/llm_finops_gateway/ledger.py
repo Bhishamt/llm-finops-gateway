@@ -86,6 +86,16 @@ class CostEntry:
 
 
 @dataclass(frozen=True)
+class ModelUsage:
+    model: str
+    calls: int
+    input_tokens: int
+    output_tokens: int
+    cached_input_tokens: int
+    cost_usd: Decimal
+
+
+@dataclass(frozen=True)
 class SummaryRow:
     team: str
     project: str
@@ -203,6 +213,35 @@ class Ledger:
         with Session(self._engine) as session:
             total = session.execute(stmt).scalar_one()
         return clean(total)
+
+    def usage_by_model(self, start: datetime, end: datetime) -> list[ModelUsage]:
+        """Calls, tokens and cost per model for rows with ``start <= ts < end`` (reconciliation)."""
+        stmt = (
+            select(
+                CostRecord.model,
+                func.count().label("calls"),
+                func.coalesce(func.sum(CostRecord.input_tokens), 0).label("input_tokens"),
+                func.coalesce(func.sum(CostRecord.output_tokens), 0).label("output_tokens"),
+                func.coalesce(func.sum(CostRecord.cached_input_tokens), 0).label("cached"),
+                func.coalesce(func.sum(CostRecord.cost_usd), 0).label("cost_usd"),
+            )
+            .where(CostRecord.ts >= start, CostRecord.ts < end)
+            .group_by(CostRecord.model)
+            .order_by(CostRecord.model)
+        )
+        with Session(self._engine) as session:
+            rows = session.execute(stmt).all()
+        return [
+            ModelUsage(
+                model=str(r.model),
+                calls=int(r.calls),
+                input_tokens=int(r.input_tokens),
+                output_tokens=int(r.output_tokens),
+                cached_input_tokens=int(r.cached),
+                cost_usd=clean(r.cost_usd),
+            )
+            for r in rows
+        ]
 
     def summary(self, team: str | None = None, project: str | None = None) -> list[SummaryRow]:
         stmt = (

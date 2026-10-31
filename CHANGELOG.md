@@ -79,6 +79,11 @@ is called out here.
   for providers per model, streaming, Entra ID, reports, alerts and the Azure deployment shape;
   demo chart regenerated.
 
+- `llm-finops-gateway ledger reconcile --resource <id> --day YYYY-MM-DD`: one day of the
+  ledger against Azure Cost Management per model, with the billed SKU and the two kinds of gap
+  named (traffic that bypassed the gateway, price book SKU mismatch) (ADR-0018). Test plan 4.5
+  reconciliation of 2026-10-30 documented.
+
 ### Changed
 - An upstream 429 is returned as `429 upstream_rate_limited` with the provider's `Retry-After`
   instead of `502 upstream_error`; the reservation is still released and nothing is recorded.
