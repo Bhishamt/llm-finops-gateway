@@ -63,6 +63,7 @@ book at Azure's list prices offline (ADR-0013).
 | `providers/openai_compat.py` | Adapter for any OpenAI Chat Completions server: Azure OpenAI v1, vLLM, LocalAI, OpenAI (ADR-0010) |
 | `pricing_sync.py`           | `pricing sync`: Azure Retail Prices meters matched to price book rows, report and in-place rewrite (ADR-0013) |
 | `report.py`                 | `/finops` HTML page, CSV summary, report access scope (ADR-0016) |
+| `reconcile.py`              | `ledger reconcile`: one day of the ledger against Azure Cost Management per model (ADR-0018) |
 | `alerts.py`                 | Webhook alerts for budget warn/block and upstream failures, cooldown, background delivery (ADR-0017) |
 | `main.py`                   | `create_app()` factory, endpoints, error handlers, model-to-provider routes (ADR-0004, 0011) |
 | `cli.py`                    | `llm-finops-gateway serve`, `keys new | hash | check`, `pricing sync`, `alerts test` |

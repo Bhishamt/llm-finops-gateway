@@ -33,14 +33,15 @@ src/llm_finops_gateway/
                    azure_identity.py (Entra ID tokens, [azure] extra, ADR-0014)
   metrics.py       Prometheus; telemetry.py optional OTel ([otel] extra, finops.* span attrs)
   models.py        request/response models (OpenAI shape + x_finops block)
-  cli.py           llm-finops-gateway serve | keys new|hash|check | pricing sync | alerts test
+  cli.py           llm-finops-gateway serve | keys new|hash|check | pricing sync | alerts test | ledger reconcile
+  reconcile.py     ledger vs Azure Cost Management per model and day (ADR-0018)
   report.py        /finops HTML page, summary CSV, report access scope (team key vs role finops, ADR-0016)
   alerts.py        Alerter: webhook POST per budget/upstream event, cooldown, background delivery (ADR-0017)
 config/            pricing.yaml, policies.yaml, keys.yaml (hashes only, repo copy is `keys: []`)
 demo/              run_demo.py (simulated or live), policies.yaml (tiny budgets), README.md
 examples/          OpenAI SDK examples (python/chat.py, typescript/chat.ts); grafana/ dashboard JSON
 docs/              architecture.md, deployment.md, azure-setup.md, testing-plan.md, comparison.md,
-                   first-publish.md, adr/0001..0017
+                   first-publish.md, adr/0001..0018
 tests/             one test module per source module, 117 tests, FakeProvider in conftest.py
 ```
 
@@ -107,7 +108,7 @@ Bias toward caution over speed; for trivial tasks use judgment.
 - `make check` must be green before any commit: ruff (lint + format), mypy `--strict` on
   `src` and `tests`, pytest. Pre-commit is installed by `make install`.
 - Every module has a test module; new behaviour comes with a test in the same change.
-- Every design decision gets an ADR in `docs/adr/` (next number: 0018). ADR-0009 (evaluation
+- Every design decision gets an ADR in `docs/adr/` (next number: 0019). ADR-0009 (evaluation
   replay) is Proposed, not implemented.
 - Decimal for money everywhere; never float.
 - Secrets only via env / `SecretStr`. Never commit a raw `lfg_` key, `.env`, `*.db`, `demo/out/`.
@@ -140,8 +141,9 @@ Azure OpenAI: `LFG_PROVIDER=azure_openai` plus `LFG_AZURE_OPENAI_ENDPOINT`,
 
 Passed 2026-10-28 on macOS with `llama3.2:3b`: sections 0 to 3c (unit suite, simulated demo,
 Ollama, budget warn/block, team keys, rate limit). Section 4 Azure OpenAI passed 2026-10-30
-(`gpt-4.1-mini-dev` in Sweden Central, both adapters; Cost Management reconciliation 4.5 still
-pending). Not yet run: 3d tracing, 5 Docker.
+(`gpt-4.1-mini-dev` in Sweden Central, both adapters); 4.5 reconciled on 2026-10-31: tokens
+match except 774 off-gateway test tokens, cost matches once the regional SKU is priced. 3d and
+5 passed on 2026-10-30.
 
 ## CI and release state
 

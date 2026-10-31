@@ -22,6 +22,7 @@ immutable once accepted; a later ADR supersedes an earlier one rather than editi
 | [0015](0015-openai-request-surface.md) | The accepted OpenAI request surface: pass through what we can price, reject the rest loudly | Accepted |
 | [0016](0016-report-page-and-scoped-access.md) | A built-in report page, and who may read what | Accepted |
 | [0017](0017-webhook-alerts.md) | Webhook alerts for budget and upstream events, sent by the gateway itself | Accepted |
+| [0018](0018-ledger-reconcile.md) | Reconcile the ledger against the provider's bill, per meter, one day at a time | Accepted |
 
 ## Template
 

@@ -190,7 +190,7 @@ python demo/run_demo.py --mode live --url http://localhost:8080 --model gpt-4.1-
 | 4.9 | Keyless: `LFG_AZURE_OPENAI_AUTH=entra`, no `LFG_AZURE_OPENAI_API_KEY`, after `az role assignment create ... --role "Cognitive Services OpenAI User"` | HTTP 200 with `Authorization: Bearer` from the `az login` identity; before the role propagates Azure answers `PermissionDenied`, returned as 502 |
 | 4.10 | Tool calling on `gpt-4.1-mini`: a `get_weather` tool, two rounds (tool call, then tool result), the same streamed, `response_format: json_object`, content parts, and a request with an unknown field | round 1 `finish_reason: tool_calls` with arguments; round 2 a sentence using the tool result; streamed `delta.tool_calls` fragments assemble to the same call; JSON mode returns JSON; content parts accepted; unknown field is 422 naming it |
 | 4.7 | Reasoning model (`gpt-5-mini` deployment, price book row `reasoning: true`) called with `temperature` and `max_tokens` the way OpenAI SDK clients do | HTTP 200 (Azure would reject raw `max_tokens` and a non-default temperature); `usage.completion_tokens_details.reasoning_tokens` present; a small `max_tokens` yields empty content with `finish_reason: length` |
-| 4.5 | Azure Cost Management, next day | the resource's token charges equal the gateway total to the cent (pay-as-you-go) |
+| 4.5 | Azure Cost Management, next day | per meter, the token quantities equal the ledger's token sums and the charges equal the ledger priced at the deployment's SKU; any gap is explained (calls made outside the gateway, or a price book SKU mismatch) |
 
 - [ ] 4.1 to 4.5 pass. Capture: 4.1 table with real dollars, 4.5 screenshot of Cost Management
       next to the gateway summary. This pair is the strongest image for the launch post.
@@ -227,7 +227,7 @@ docker compose down
 | 3b Team keys | pass | 2026-10-28 | 401 missing_api_key with `WWW-Authenticate`, 401 invalid_api_key, 200 with `key_id`, 403 team_mismatch |
 | 3c Rate limit | pass | 2026-10-28 | `403 403 403 429`, `Retry-After: 60`, log `reason=rate_limited rpm=3` |
 | 3d Tracing | pass | 2026-10-30 | Jaeger 2.5.0 via OTLP/HTTP on 4318; `POST /v1/chat/completions` spans carry `finops.team`, `finops.project`, `finops.use_case`, `finops.model`, `finops.cost_usd`, `finops.input_tokens`, `finops.output_tokens`, `finops.request_id`; `/healthz` not traced |
-| 4 Azure OpenAI | pass (4.1 to 4.4, 4.6) | 2026-10-30 | `gpt-4.1-mini-dev` in Sweden Central; 30-call run then an 800-call run (713 sent, 662 served, 0.0576 USD) with a policy copy that allows the model for every team; ledger total for the day 674 rows, 12,214 input and 33,448 output tokens, 0.0584024 USD; cost by hand matches to the last digit; 502 `DeploymentNotFound` with 0 ledger rows; v1 endpoint via `openai_compat` ok. 4.7 reasoning params on `gpt-5-mini-dev` (Global Standard) pass 2026-10-30: 200 with translated params, 60-token limit gave empty content and `length`, 400-token limit gave "Ready" with 74 completion tokens, cost 0.00015125 USD matches by hand. 4.8 streaming pass 2026-10-30: 13 events, text intact, final usage 16 in / 10 out from Azure (not estimated), cost 0.0000224 USD, ledger row written; gpt-5-mini stream reported 300 reasoning tokens. 4.9 Entra pass 2026-10-30: keyless chat and stream through the gateway with the `az login` identity, both ledgered; the `Cognitive Services OpenAI User` role took about 35 minutes to propagate (first `PermissionDenied` naming the principal, then "Principal does not have access to API/Operation", then 200). 4.10 tool calling pass 2026-10-30: `tool_calls` round trip, 7 streamed fragments assembling `{"city":"Pecs"}`, JSON mode, content parts, 422 `extra_forbidden` for `foo`. 4.5 Cost Management pending (data lags 8 to 24 h) |
+| 4 Azure OpenAI | pass (4.1 to 4.4, 4.6) | 2026-10-30 | `gpt-4.1-mini-dev` in Sweden Central; 30-call run then an 800-call run (713 sent, 662 served, 0.0576 USD) with a policy copy that allows the model for every team; ledger total for the day 674 rows, 12,214 input and 33,448 output tokens, 0.0584024 USD; cost by hand matches to the last digit; 502 `DeploymentNotFound` with 0 ledger rows; v1 endpoint via `openai_compat` ok. 4.7 reasoning params on `gpt-5-mini-dev` (Global Standard) pass 2026-10-30: 200 with translated params, 60-token limit gave empty content and `length`, 400-token limit gave "Ready" with 74 completion tokens, cost 0.00015125 USD matches by hand. 4.8 streaming pass 2026-10-30: 13 events, text intact, final usage 16 in / 10 out from Azure (not estimated), cost 0.0000224 USD, ledger row written; gpt-5-mini stream reported 300 reasoning tokens. 4.9 Entra pass 2026-10-30: keyless chat and stream through the gateway with the `az login` identity, both ledgered; the `Cognitive Services OpenAI User` role took about 35 minutes to propagate (first `PermissionDenied` naming the principal, then "Principal does not have access to API/Operation", then 200). 4.10 tool calling pass 2026-10-30: `tool_calls` round trip, 7 streamed fragments assembling `{"city":"Pecs"}`, JSON mode, content parts, 422 `extra_forbidden` for `foo`. 4.5 pass 2026-10-31 (see the reconciliation below) |
 | 5 Docker | pass (image) | 2026-10-30 | image builds, runs as uid 10001, healthcheck `healthy`, live call through the container ok. `docker compose config` fails on Compose 2.23 (`env_file` long syntax needs 2.24+); compose with Ollama not brought up |
 | 6 Limitations | confirmed by tests | 2026-10-28 | estimate-based rejection and per-instance rate limits covered by unit tests |
 
@@ -283,3 +283,36 @@ docker compose down
   way (`lacks the required data action` first, `Principal does not have access to
   API/Operation` later) without meaning anything different. A fresh token does not help;
   waiting does.
+
+## Reconciliation of 2026-10-30 against Azure Cost Management (run 2026-10-31)
+
+Cost Management query at subscription scope filtered to the resource, daily granularity,
+grouped by meter (the two aggregations the API allows per query: cost and usage quantity,
+then cost in USD). Tokens are quantity times the meter unit (1K or 1M).
+
+| Meter (Azure)                    | Azure tokens | Ledger tokens | Azure USD | Ledger USD at that SKU |
+| -------------------------------- | -----------: | ------------: | --------: | ---------------------: |
+| gpt 4.1 mini Inp regnl Tokens    | 12,263 | 12,214 (before 15:27Z) | 0.005935 | 0.005912 |
+| gpt 4.1 mini Outp regnl Tokens   | 33,462 | 33,448 (before 15:27Z) | 0.064782 | 0.064755 |
+| gpt 4.1 mini Inp glbl Tokens     | 5,634  | 5,598 (after 15:27Z)   | 0.002254 | 0.002239 |
+| gpt 4.1 mini Outp glbl Tokens    | 13,070 | 13,062 (after 15:27Z)  | 0.020912 | 0.020899 |
+| GPT 5 Mini Inpt Glbl 1M Tokens   | 151    | 64                     | 0.000038 | 0.000016 |
+| GPT 5 Mini outpt Glbl 1M Tokens  | 1,290  | 710                    | 0.002580 | 0.001420 |
+| **Total**                        | 65,870 | 65,096                 | **0.096501** | **0.095241** |
+
+- Azure billed 0.096501 USD (0.084918 EUR, Microsoft's rate 0.8800). The ledger recorded
+  0.082977 USD. The gap splits exactly in two:
+  - **0.012265 USD price book SKU mismatch**: the deployment was regional `Standard` until
+    15:27Z while the book carried Global Standard prices (0.40 / 1.60 against 0.484 / 1.936).
+    Repricing the 674 pre-switch calls at the regional meters gives 0.070667 USD, which is what
+    Azure charged for those tokens. `pricing sync --deployment regional` reports exactly this.
+  - **0.001260 USD calls made outside the gateway**: 172 input and 602 output tokens from
+    direct API tests during the day (gpt-5-mini curl tests, one keyless Entra stream, the v1
+    endpoint and tracing smokes). The ledger cannot see what did not pass through it; this is
+    the "block direct access" step of the rollout guide.
+- With those two explained, the per-meter token counts match to within the off-ledger calls
+  and the per-meter charges match to the sixth decimal. The ledger reproduces the invoice
+  when the book carries the deployment's SKU price, which is the point of ADR-0002 and
+  ADR-0013.
+- Time split: the ledger's timestamps are UTC; Cost Management days are UTC; the deployment
+  switch time comes from the deployment's `systemData.createdAt`.

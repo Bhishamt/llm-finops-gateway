@@ -6,6 +6,7 @@ llm-finops-gateway keys hash lfg_...
 llm-finops-gateway keys check config/keys.yaml
 llm-finops-gateway pricing sync --region swedencentral [--deployment global] [--write]
 llm-finops-gateway alerts test            # one sample event to LFG_ALERT_WEBHOOK_URL
+llm-finops-gateway ledger reconcile --resource <azure resource id> --day 2026-10-30
 """
 
 from __future__ import annotations
@@ -111,6 +112,37 @@ def _alerts_test(args: argparse.Namespace) -> None:
     sys.exit(0 if ok else 1)
 
 
+def _ledger_reconcile(args: argparse.Namespace) -> None:
+    from datetime import date
+
+    from .config import Settings
+    from .ledger import Ledger
+    from .pricing import PriceBook
+    from .reconcile import MANAGEMENT_SCOPE, fetch_cost_management, format_report, reconcile
+
+    settings = Settings()
+    token = args.token
+    if token is None:
+        try:
+            from azure.identity import DefaultAzureCredential
+        except ImportError:
+            print("needs the azure extra: pip install 'llm-finops-gateway[azure]'", file=sys.stderr)
+            sys.exit(2)
+        token = DefaultAzureCredential().get_token(MANAGEMENT_SCOPE).token
+    day = date.fromisoformat(args.day)
+    meters = fetch_cost_management(args.resource, day, token)
+    if not meters:
+        print(
+            f"no chat token meters for {day} yet; Cost Management lags 8 to 24 hours",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    report = reconcile(
+        Ledger(settings.database_url), PriceBook.from_yaml(settings.pricing_path), meters, day
+    )
+    print(format_report(report))
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="llm-finops-gateway")
     sub = parser.add_subparsers(dest="command")
@@ -164,6 +196,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
     s.add_argument("--write", action="store_true", help="rewrite differing prices in place")
     s.set_defaults(func=_pricing_sync)
+
+    ledger = sub.add_parser("ledger", help="ledger tools")
+    lsub = ledger.add_subparsers(dest="ledger_command", required=True)
+    rc = lsub.add_parser(
+        "reconcile", help="compare one day of the ledger with Azure Cost Management (ADR-0018)"
+    )
+    rc.add_argument("--resource", required=True, help="Azure OpenAI resource id")
+    rc.add_argument("--day", required=True, help="UTC day, YYYY-MM-DD (data lags 8 to 24 h)")
+    rc.add_argument(
+        "--token", help="management-scope bearer token; default: DefaultAzureCredential"
+    )
+    rc.set_defaults(func=_ledger_reconcile)
 
     alerts = sub.add_parser("alerts", help="webhook alerts (ADR-0017)")
     asub = alerts.add_subparsers(dest="alerts_command", required=True)
