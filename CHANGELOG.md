@@ -85,9 +85,12 @@ is called out here.
   reconciliation of 2026-10-30 documented.
 
 - `deploy/azure/`: Bicep for Azure Container Apps with a user-assigned managed identity
-  (Cognitive Services OpenAI User on the account, AcrPull on the registry), Azure Files for
-  the SQLite ledger, Log Analytics, team key hashes as a secret file; README with costs and
-  the production additions.
+  (Cognitive Services OpenAI User on the account, AcrPull on the registry), Azure Database
+  for PostgreSQL Flexible Server for the ledger (Azure Files + SQLite as the fallback), Log
+  Analytics, team key hashes as a secret file; README with costs and the production additions.
+- `[postgres]` extra (psycopg); the ledger is tested against a real PostgreSQL
+  (`tests/test_ledger_postgres.py`, runs when `LFG_TEST_DATABASE_URL` is set); the Docker
+  image includes the driver.
 
 ### Changed
 - An upstream 429 is returned as `429 upstream_rate_limited` with the provider's `Retry-After`

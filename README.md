@@ -367,7 +367,7 @@ Environment variables (prefix `LFG_`; a `.env` file is read if present):
 | `LFG_KEYS_PATH`                 | `config/keys.yaml`        | hashes only                             |
 | `LFG_PRICING_PATH`              | `config/pricing.yaml`     |                                         |
 | `LFG_POLICIES_PATH`             | `config/policies.yaml`    | missing file = no policies              |
-| `LFG_DATABASE_URL`              | `sqlite:///./gateway.db`  | any SQLAlchemy URL                      |
+| `LFG_DATABASE_URL`              | `sqlite:///./gateway.db`  | any SQLAlchemy URL; PostgreSQL via `pip install ".[postgres]"` and `postgresql+psycopg://...` |
 | `LFG_REQUEST_TIMEOUT_SECONDS`   | `120`                     |                                         |
 | `LFG_REPORT_RATES`              | `{}`                      | display currencies on `/finops` as units per 1 book unit, e.g. `{"EUR": 0.88}` |
 | `LFG_ALERT_WEBHOOK_URL`         |                           | Slack/Teams incoming webhook or any JSON endpoint; empty = off |
@@ -441,9 +441,10 @@ a tool-call round trip, and a rejected call.
 
 [`deploy/azure/`](deploy/azure/) has one Bicep file and a short README: a Container App with a
 user-assigned managed identity that calls Azure OpenAI without a key (ADR-0014), an Azure
-Files share for the ledger, Log Analytics, and the image built in the cloud with
-`az acr build`. About half a dollar a day for an always-on demo; what to add for production
-is listed there (PostgreSQL, Entra ID in front of `/finops`, private networking, Key Vault).
+Database for PostgreSQL for the ledger (SQLite on Azure Files as the cheap fallback), Log
+Analytics, and the image built in the cloud with `az acr build`. About 1.2 USD a day for an
+always-on demo; what to add for production is listed there (Entra ID in front of `/finops`,
+private networking, Key Vault).
 
 ## Docker
 

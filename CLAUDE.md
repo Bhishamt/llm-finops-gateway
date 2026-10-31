@@ -40,7 +40,7 @@ src/llm_finops_gateway/
 config/            pricing.yaml, policies.yaml, keys.yaml (hashes only, repo copy is `keys: []`)
 demo/              run_demo.py (simulated or live), policies.yaml (tiny budgets), README.md
 examples/          OpenAI SDK examples (python/chat.py, typescript/chat.ts); grafana/ dashboard JSON
-deploy/azure/      main.bicep + openai-role.bicep + README: Container Apps with managed identity (keys.yaml there is git-ignored)
+deploy/azure/      main.bicep + openai-role.bicep + README: Container Apps + PostgreSQL with managed identity (keys.yaml there is git-ignored)
 docs/              architecture.md, deployment.md, azure-setup.md, testing-plan.md, comparison.md,
                    first-publish.md, adr/0001..0018
 tests/             one test module per source module, 117 tests, FakeProvider in conftest.py

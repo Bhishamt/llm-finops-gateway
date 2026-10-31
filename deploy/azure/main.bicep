@@ -5,10 +5,11 @@
 //     -p azureOpenAiResourceId=<id> -p azureOpenAiEndpoint=https://<name>.openai.azure.com/ \
 //     -p deployments='{"gpt-4.1-mini":"gpt-4.1-mini-dev"}' -p keysYaml=@keys.yaml
 //
-// What it creates: Log Analytics + Container Apps environment, a storage account with an Azure
-// Files share mounted at /data (SQLite ledger; use PostgreSQL for anything shared), a
-// user-assigned identity with AcrPull on the registry and Cognitive Services OpenAI User on the
-// Azure OpenAI resource, and the Container App. Team key hashes arrive as a secret file.
+// What it creates: Log Analytics + Container Apps environment, an Azure Database for PostgreSQL
+// Flexible Server (Burstable B1ms) for the ledger (or, with usePostgres=false, an Azure Files
+// share mounted at /data for SQLite), a user-assigned identity with AcrPull on the registry and
+// Cognitive Services OpenAI User on the Azure OpenAI resource, and the Container App. Team key
+// hashes arrive as a secret file; the database URL is a Container App secret.
 
 @description('Azure region; keep it next to the Azure OpenAI resource.')
 param location string = resourceGroup().location
@@ -48,6 +49,19 @@ param alertWebhookUrl string = ''
 @maxValue(3)
 param minReplicas int = 1
 
+@description('true: PostgreSQL Flexible Server for the ledger (recommended); false: SQLite on Azure Files, one replica only.')
+param usePostgres bool = true
+
+@description('PostgreSQL admin password (usePostgres=true). Keep it in your secret store; the app gets it as a secret.')
+@secure()
+param postgresPassword string = ''
+
+@description('Optional client IPv4 address allowed to reach PostgreSQL directly (laptop, Power BI Desktop); empty = none.')
+param clientIp string = ''
+
+var postgresUser = 'lfgadmin'
+var postgresDb = 'lfg'
+
 var registryServer = split(image, '/')[0]
 var openAiRg = split(azureOpenAiResourceId, '/')[4]
 var acrPullRole = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '7f951dda-4ed3-4680-a7ca-43fe172d538d')
@@ -75,7 +89,7 @@ resource env 'Microsoft.App/managedEnvironments@2024-03-01' = {
   }
 }
 
-resource storage 'Microsoft.Storage/storageAccounts@2023-05-01' = {
+resource storage 'Microsoft.Storage/storageAccounts@2023-05-01' = if (!usePostgres) {
   name: toLower(replace('${name}${uniqueString(resourceGroup().id)}', '-', ''))
   location: location
   sku: { name: 'Standard_LRS' }
@@ -86,29 +100,68 @@ resource storage 'Microsoft.Storage/storageAccounts@2023-05-01' = {
   }
 }
 
-resource files 'Microsoft.Storage/storageAccounts/fileServices@2023-05-01' = {
+resource files 'Microsoft.Storage/storageAccounts/fileServices@2023-05-01' = if (!usePostgres) {
   parent: storage
   name: 'default'
 }
 
-resource share 'Microsoft.Storage/storageAccounts/fileServices/shares@2023-05-01' = {
+resource share 'Microsoft.Storage/storageAccounts/fileServices/shares@2023-05-01' = if (!usePostgres) {
   parent: files
   name: 'ledger'
   properties: { shareQuota: 5 }
 }
 
-resource envStorage 'Microsoft.App/managedEnvironments/storages@2024-03-01' = {
+resource envStorage 'Microsoft.App/managedEnvironments/storages@2024-03-01' = if (!usePostgres) {
   parent: env
   name: 'ledger'
   properties: {
     azureFile: {
-      accountName: storage.name
-      accountKey: storage.listKeys().keys[0].value
+      accountName: storage!.name
+      accountKey: storage!.listKeys().keys[0].value
       shareName: share.name
       accessMode: 'ReadWrite'
     }
   }
 }
+
+resource postgres 'Microsoft.DBforPostgreSQL/flexibleServers@2023-12-01-preview' = if (usePostgres) {
+  name: toLower('${name}-pg-${uniqueString(resourceGroup().id)}')
+  location: location
+  sku: { name: 'Standard_B1ms', tier: 'Burstable' }
+  properties: {
+    version: '16'
+    administratorLogin: postgresUser
+    administratorLoginPassword: postgresPassword
+    storage: { storageSizeGB: 32, autoGrow: 'Enabled' }
+    backup: { backupRetentionDays: 7, geoRedundantBackup: 'Disabled' }
+    highAvailability: { mode: 'Disabled' }
+    network: { publicNetworkAccess: 'Enabled' }
+    authConfig: { passwordAuth: 'Enabled', activeDirectoryAuth: 'Disabled' }
+  }
+}
+
+resource postgresDatabase 'Microsoft.DBforPostgreSQL/flexibleServers/databases@2023-12-01-preview' = if (usePostgres) {
+  parent: postgres
+  name: postgresDb
+  properties: { charset: 'UTF8', collation: 'en_US.utf8' }
+}
+
+// Container Apps consumption egress has no fixed IP; the Azure-services rule admits it.
+resource postgresAzureAccess 'Microsoft.DBforPostgreSQL/flexibleServers/firewallRules@2023-12-01-preview' = if (usePostgres) {
+  parent: postgres
+  name: 'AllowAzureServices'
+  properties: { startIpAddress: '0.0.0.0', endIpAddress: '0.0.0.0' }
+}
+
+resource postgresClientAccess 'Microsoft.DBforPostgreSQL/flexibleServers/firewallRules@2023-12-01-preview' = if (usePostgres && !empty(clientIp)) {
+  parent: postgres
+  name: 'AllowClient'
+  properties: { startIpAddress: clientIp, endIpAddress: clientIp }
+}
+
+var databaseUrl = usePostgres
+  ? 'postgresql+psycopg://${postgresUser}:${uriComponent(postgresPassword)}@${postgres!.properties.fullyQualifiedDomainName}:5432/${postgresDb}?sslmode=require'
+  : 'sqlite:////data/gateway.db'
 
 resource identity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
   name: '${name}-identity'
@@ -161,6 +214,7 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
       ]
       secrets: [
         { name: 'keys-yaml', value: keysYaml }
+        { name: 'database-url', value: databaseUrl }
         { name: 'alert-webhook', value: empty(alertWebhookUrl) ? 'unset' : alertWebhookUrl }
       ]
     }
@@ -179,15 +233,15 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
               { name: 'AZURE_CLIENT_ID', value: identity.properties.clientId }
               { name: 'LFG_AUTH_MODE', value: authMode }
               { name: 'LFG_KEYS_PATH', value: '/secrets/keys.yaml' }
-              { name: 'LFG_DATABASE_URL', value: 'sqlite:////data/gateway.db' }
+              { name: 'LFG_DATABASE_URL', secretRef: 'database-url' }
               { name: 'LFG_REPORT_RATES', value: reportRates }
             ],
             empty(alertWebhookUrl) ? [] : [ { name: 'LFG_ALERT_WEBHOOK_URL', secretRef: 'alert-webhook' } ]
           )
-          volumeMounts: [
-            { volumeName: 'ledger', mountPath: '/data' }
-            { volumeName: 'secrets', mountPath: '/secrets' }
-          ]
+          volumeMounts: concat(
+            [ { volumeName: 'secrets', mountPath: '/secrets' } ],
+            usePostgres ? [] : [ { volumeName: 'ledger', mountPath: '/data' } ]
+          )
           probes: [
             {
               type: 'Liveness'
@@ -198,26 +252,31 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
           ]
         }
       ]
-      volumes: [
-        {
-          name: 'ledger'
-          storageType: 'AzureFile'
-          storageName: envStorage.name
-          // SQLite over SMB needs byte-range locks off (nobrl) and the share owned by the
-          // container's user (uid 10001 in the image); one replica writes, so this is safe.
-          mountOptions: 'nobrl,uid=10001,gid=10001,dir_mode=0770,file_mode=0660,cache=strict'
-        }
-        {
-          name: 'secrets'
-          storageType: 'Secret'
-          secrets: [ { secretRef: 'keys-yaml', path: 'keys.yaml' } ]
-        }
-      ]
-      scale: { minReplicas: minReplicas, maxReplicas: 1 }
+      volumes: concat(
+        [
+          {
+            name: 'secrets'
+            storageType: 'Secret'
+            secrets: [ { secretRef: 'keys-yaml', path: 'keys.yaml' } ]
+          }
+        ],
+        usePostgres ? [] : [
+          {
+            name: 'ledger'
+            storageType: 'AzureFile'
+            storageName: 'ledger'
+            // SQLite over SMB needs byte-range locks off (nobrl) and the share owned by the
+            // container's user (uid 10001 in the image); one replica writes, so this is safe.
+            mountOptions: 'nobrl,uid=10001,gid=10001,dir_mode=0770,file_mode=0660,cache=strict'
+          }
+        ]
+      )
+      scale: { minReplicas: minReplicas, maxReplicas: usePostgres ? 3 : 1 }
     }
   }
-  dependsOn: [ acrPull, openAiRole ]
+  dependsOn: [ acrPull, openAiRole, envStorage, postgresDatabase, postgresAzureAccess ]
 }
 
 output url string = 'https://${app.properties.configuration.ingress.fqdn}'
 output identityPrincipalId string = identity.properties.principalId
+output postgresHost string = usePostgres ? postgres!.properties.fullyQualifiedDomainName : ''

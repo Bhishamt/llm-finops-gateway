@@ -40,6 +40,7 @@ dev = [
 ]
 demo = ["matplotlib>=3.8"]
 azure = ["azure-identity>=1.19"]
+postgres = ["psycopg[binary]>=3.2"]
 otel = [
   "opentelemetry-api>=1.25",
   "opentelemetry-sdk>=1.25",

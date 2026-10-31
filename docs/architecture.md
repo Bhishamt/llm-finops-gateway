@@ -111,9 +111,9 @@ Azure Container Apps ── llm-finops-gateway ──▶ Azure OpenAI (private e
    alerts  ──▶ Slack / Teams webhook
 ```
 
-`deploy/azure/main.bicep` creates the Container App, identity, role assignments, Azure Files
-ledger and Log Analytics; PostgreSQL, Entra ID in front of `/finops`, private networking and
-Key Vault are the documented next additions. `docs/reporting.md` maps each view to its Azure
+`deploy/azure/main.bicep` creates the Container App, identity, role assignments, the
+PostgreSQL Flexible Server ledger (or Azure Files + SQLite) and Log Analytics; Entra ID in
+front of `/finops`, private networking and Key Vault are the documented next additions. `docs/reporting.md` maps each view to its Azure
 service.
 
 ## Roadmap mapping
