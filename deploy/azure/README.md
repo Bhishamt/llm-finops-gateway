@@ -13,7 +13,7 @@ is a deliberate next layer, not a prerequisite.
 | Container App, 0.25 vCPU / 0.5 GiB, one replica always on | ~0.45 USD | consumption plan after the monthly free grant; `minReplicas=0` makes it near zero when idle |
 | Container Apps environment, Log Analytics | ~0 | 5 GB/month of logs are free |
 | Container Registry Basic | ~0.17 USD | holds the image; `az acr build` builds in the cloud |
-| Storage account, 5 GB Azure Files | ~0.01 USD | the ledger |
+| Storage account, 5 GB Azure Files | ~0.01 USD | the ledger; mounted with `nobrl` so SQLite works over SMB, one replica only |
 | Azure OpenAI | usage | the calls themselves |
 
 About half a dollar a day for a demo that is always on. PostgreSQL (Flexible Server B1ms,

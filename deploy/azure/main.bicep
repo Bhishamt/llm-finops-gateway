@@ -199,7 +199,14 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
         }
       ]
       volumes: [
-        { name: 'ledger', storageType: 'AzureFile', storageName: envStorage.name }
+        {
+          name: 'ledger'
+          storageType: 'AzureFile'
+          storageName: envStorage.name
+          // SQLite over SMB needs byte-range locks off (nobrl) and the share owned by the
+          // container's user (uid 10001 in the image); one replica writes, so this is safe.
+          mountOptions: 'nobrl,uid=10001,gid=10001,dir_mode=0770,file_mode=0660,cache=strict'
+        }
         {
           name: 'secrets'
           storageType: 'Secret'
