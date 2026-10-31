@@ -437,6 +437,14 @@ of the gateway. Details in [docs/reporting.md](docs/reporting.md).
 OpenAI SDKs: a completion with the `x_finops` block, a stream with the cost in the final chunk,
 a tool-call round trip, and a rejected call.
 
+## Deploy to Azure
+
+[`deploy/azure/`](deploy/azure/) has one Bicep file and a short README: a Container App with a
+user-assigned managed identity that calls Azure OpenAI without a key (ADR-0014), an Azure
+Files share for the ledger, Log Analytics, and the image built in the cloud with
+`az acr build`. About half a dollar a day for an always-on demo; what to add for production
+is listed there (PostgreSQL, Entra ID in front of `/finops`, private networking, Key Vault).
+
 ## Docker
 
 ```bash

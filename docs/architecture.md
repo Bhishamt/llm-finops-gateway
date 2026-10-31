@@ -111,9 +111,10 @@ Azure Container Apps ── llm-finops-gateway ──▶ Azure OpenAI (private e
    alerts  ──▶ Slack / Teams webhook
 ```
 
-The Bicep or Terraform module for this is on the roadmap. Until then: run the container
-anywhere with the `LFG_*` variables set and `LFG_DATABASE_URL` pointing at a persistent
-database; `docs/reporting.md` maps each view to its Azure service.
+`deploy/azure/main.bicep` creates the Container App, identity, role assignments, Azure Files
+ledger and Log Analytics; PostgreSQL, Entra ID in front of `/finops`, private networking and
+Key Vault are the documented next additions. `docs/reporting.md` maps each view to its Azure
+service.
 
 ## Roadmap mapping
 
