@@ -330,7 +330,7 @@ teams:
 | GET    | `/v1/models`             | Models the price book knows, and which provider serves each |
 | GET    | `/finops`                | Report page: budgets and chargeback, HTML, no build step   |
 | GET    | `/v1/finops/summary`     | Cost grouped by team / project / model, filterable         |
-| GET    | `/v1/finops/summary.csv` | The same rows as CSV for Excel and Power BI                |
+| GET    | `/v1/finops/summary.csv` | The same rows as CSV for spreadsheets and BI tools         |
 | GET    | `/v1/finops/budgets`     | Month-to-date budget, rate limit and allow-list per team   |
 | GET    | `/metrics`               | Prometheus: requests by outcome, cost, tokens, latency, budget ratio |
 | GET    | `/healthz`               | Liveness, version, auth mode, price book and policy versions |
@@ -343,8 +343,8 @@ own team, a key with `role: finops` (`keys new --role finops`) reads every team,
 page asks for the key once and keeps it in a session cookie. The page sorts on any column,
 filters rows, selects teams (all or a subset), switches the display currency
 (`LFG_REPORT_RATES`, display only; the ledger stays in the book's currency), and opens the
-effective policy per team and the price book from their version links. How to feed Excel, Power BI or a
-database-backed BI model is in [docs/reporting.md](docs/reporting.md).
+effective policy per team and the price book from their version links. How spreadsheets and BI
+tools read the same data is in [docs/reporting.md](docs/reporting.md).
 
 ## Configuration
 
@@ -425,9 +425,8 @@ open http://localhost:3000                                 # viewer without logi
 
 Where each view lives in Azure: the report page is served by the gateway itself, so it is the
 Container App's URL plus `/finops`, behind the gateway's key auth and whatever sits in front
-(Container Apps authentication with Entra ID, or APIM); finance pulls CSV or JSON into a BI tool
-such as Power BI (documented, to be verified once a gateway runs in Azure), or reads the ledger
-database; operations scrape `/metrics` with Azure Monitor managed
+(Container Apps authentication with Entra ID, or APIM); finance pulls CSV or JSON into whatever
+BI tool it already has, or reads the ledger database with the read-only role; operations scrape `/metrics` with Azure Monitor managed
 Prometheus and import this dashboard into Azure Managed Grafana; alerts go to Slack or Teams
 through the webhook, or come from Azure Monitor alert rules on the same metrics. Azure Cost
 Management only ever sees the Azure OpenAI resource's bill; the team dimension exists because

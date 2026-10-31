@@ -100,6 +100,9 @@ is called out here.
   (`tests/test_ledger_postgres.py`, runs when `LFG_TEST_DATABASE_URL` is set); the Docker
   image includes the driver.
 
+- Docs: BI tools are a consumer of the CSV, JSON and the read-only database role; no
+  product-specific BI instructions in the core.
+
 ### Changed
 - An upstream 429 is returned as `429 upstream_rate_limited` with the provider's `Retry-After`
   instead of `502 upstream_error`; the reservation is still released and nothing is recorded.
