@@ -106,9 +106,9 @@ true` switches the request to `max_completion_tokens`; `provider:` picks the ada
 ```
 Azure Container Apps ── llm-finops-gateway ──▶ Azure OpenAI (private endpoint)
    managed identity         │   │                 role: Cognitive Services OpenAI User
-   (no provider key)        │   └── /finops, /v1/finops/* ──▶ Power BI (chargeback)
+   (no provider key)        │   └── /finops, /v1/finops/* ──▶ any BI tool (chargeback)
    Key Vault (secrets)      │
-                     Azure Database for PostgreSQL (ledger; app writes as lfg_app, BI reads as lfg_reporting)
+                     Azure Database for PostgreSQL (ledger; app writes as lfg_app, readers use lfg_reporting)
    /metrics ──▶ Azure Monitor managed Prometheus ──▶ Azure Managed Grafana (dashboard)
    alerts  ──▶ Slack / Teams webhook
 ```

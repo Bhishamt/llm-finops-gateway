@@ -3,7 +3,7 @@
 The smallest shape that runs the gateway in Azure with its own identity: one Container App,
 a user-assigned managed identity that may call Azure OpenAI (no provider key anywhere), an
 Azure Database for PostgreSQL Flexible Server for the ledger (shared by replicas and readable
-by Power BI), Log Analytics for logs. One Bicep file, no landing zone. Everything beyond this
+by BI tools), Log Analytics for logs. One Bicep file, no landing zone. Everything beyond this
 (APIM, Private Link, Key Vault for team keys, VNet) is a deliberate next layer, not a
 prerequisite. `usePostgres=false` swaps the database for an Azure Files share with SQLite
 (one replica only).
@@ -85,7 +85,7 @@ Everything a person may need to log in or connect is in the Key Vault the deploy
 | `postgres-password` | admin password of `lfgadmin`; generated on the first deployment, pass it back on later runs to keep it |
 | `database-url` | the SQLAlchemy URL the app uses (`LFG_DATABASE_URL`, read by the app from Key Vault with its identity); `lfg_app` after `db_roles.py` |
 | `postgres-app-password`, `postgres-reporting-password` | passwords of `lfg_app` and `lfg_reporting` (`db_roles.py`) |
-| `database-url-reporting` | read-only URL for Power BI, psql, `ledger reconcile` |
+| `database-url-reporting` | read-only URL for BI tools, psql, `ledger reconcile` |
 
 ```bash
 az keyvault secret show --vault-name <keyVaultName> --name team-key-finops-report --query value -o tsv
@@ -97,7 +97,7 @@ never the raw values.
 # 4. Database roles, once: the app stops running as the admin, readers get a read-only role
 pip install -e ".[postgres]"
 python deploy/azure/db_roles.py --vault <keyVaultName> --resource-group $RG
-# creates lfg_app (gateway) and lfg_reporting (Power BI), stores their passwords and URLs in
+# creates lfg_app (gateway) and lfg_reporting (read-only, BI tools), stores their passwords and URLs in
 # Key Vault, switches database-url to lfg_app and restarts the app. On later deployments pass
 #   -p databaseUrl="$(az keyvault secret show --vault-name <keyVaultName> --name database-url --query value -o tsv)"
 # so the template keeps the app-role URL. Schema and grants: docs/database.md.

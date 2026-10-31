@@ -56,14 +56,14 @@ Enforcement reads and updates this row with one conditional `UPDATE`; reports re
 | --- | --- | --- |
 | `lfgadmin` | server admin, owns the tables | the Bicep deployment, `db_roles.py`, schema changes |
 | `lfg_app` | CONNECT, USAGE on `public`, SELECT/INSERT/UPDATE on the two tables, USAGE on their sequences; the same on tables created later | the gateway (`database-url` in Key Vault) |
-| `lfg_reporting` | CONNECT, USAGE, SELECT on every table, also future ones | Power BI, Excel, `ledger reconcile` from a laptop, anyone who reads (`database-url-reporting` in Key Vault) |
+| `lfg_reporting` | CONNECT, USAGE, SELECT on every table, also future ones | BI tools, spreadsheets, `ledger reconcile` from a laptop, anyone who reads (`database-url-reporting` in Key Vault) |
 
 The gateway cannot DELETE or TRUNCATE; the reporting role cannot write. The script also
 rotates the two passwords when re-run and restarts the Container App so it picks up the new
 `database-url`. Key Vault holds: `postgres-password` (admin), `postgres-app-password`,
 `postgres-reporting-password`, `database-url`, `database-url-reporting`.
 
-Connecting from Power BI or psql: host and database from `database-url-reporting`, user
+Connecting from a BI tool or psql: host and database from `database-url-reporting`, user
 `lfg_reporting`, SSL required; the server's firewall must list the client's IP (Bicep
 `clientIp`) or the client must come through the Azure-services rule.
 
