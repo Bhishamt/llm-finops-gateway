@@ -30,8 +30,8 @@ client = OpenAI(
 ```
 
 LangChain, LlamaIndex, Semantic Kernel, curl: same two values (`base_url` / `api_key`, plus
-the project header). Streaming is not supported yet, so set `stream=False` where a library
-defaults to streaming.
+the project header). Streaming works as with the provider; the cost arrives in the final
+chunk (ADR-0012).
 
 ## Issuing and rotating team keys
 
@@ -77,9 +77,9 @@ Every step is a config change in git with a reviewer, which is also your audit t
   collector, Grafana Tempo, or Langfuse.
 - **Rate limits** are per replica (ADR-0008); with 3 replicas the effective limit is 3x.
 
-A Terraform module for this shape is on the roadmap; until then the `az` commands in
-[`azure-setup.md`](azure-setup.md) cover the OpenAI side and the Container App is a standard
-deployment.
+[`deploy/azure/`](../deploy/azure/) has the Bicep template for this shape (Container App with a
+managed identity, PostgreSQL, Key Vault) and the `az` commands around it; `azure-setup.md`
+covers a disposable Azure OpenAI resource for testing.
 
 ## Day-two operations
 
@@ -90,7 +90,7 @@ deployment.
 | Price change | edit `pricing.yaml`, bump `version`, PR, deploy. Old rows keep their version |
 | New model | add it to `pricing.yaml` **and** to the allow-lists that may use it |
 | Leaked key | set `disabled: true`, deploy, issue a new one; the ledger's `key_id` shows what it was used for |
-| Counter drift | rebuild `budget_counters` from `cost_records` for the month (a `ledger reconcile` CLI command is planned) |
+| Counter drift | rebuild `budget_counters` from `cost_records` for the month with SQL as the admin role; `ledger reconcile` compares the ledger with the provider's bill (ADR-0018) |
 
 ## Alerts worth having from day one
 

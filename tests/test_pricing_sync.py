@@ -120,7 +120,7 @@ def test_resolve_is_ambiguous_across_model_versions_until_the_row_names_one() ->
 
 BOOK = """\
 # comment stays
-version: "2026-11-02"
+version: "2026-10-01"
 currency: USD
 models:
   gpt-4.1-mini: { input: 0.40, output: 1.60, cached_input: 0.10, provider: azure_openai }
@@ -151,7 +151,7 @@ def test_sync_write_rewrites_numbers_in_place_and_bumps_version(tmp_path: Path) 
     assert changes == 2  # gpt-5-mini input, gpt-4o-mini cached_input
     text = path.read_text()
     assert text.startswith("# comment stays\n")
-    assert 'version: "20' in text and 'version: "2026-11-02"' not in text
+    assert 'version: "20' in text and 'version: "2026-10-01"' not in text
     assert "gpt-5-mini: { input: 0.25, output: 2.00, cached_input: 0.025" in text
     assert "gpt-4o-mini: { input: 0.15, output: 0.60, cached_input: 0.075, provider" in text
     assert "gpt-4o: { input: 2.50, output: 10.00, provider" in text  # ambiguous: untouched

@@ -465,16 +465,17 @@ pytest -q
 CI runs the same steps on 3.11 and 3.12, plus `pip-audit` and a Docker build.
 Architecture notes: [docs/architecture.md](docs/architecture.md). Operations:
 [docs/deployment.md](docs/deployment.md). Manual test plan with the latest results:
-[docs/testing-plan.md](docs/testing-plan.md). Maintainers: [docs/first-publish.md](docs/first-publish.md).
+[docs/testing-plan.md](docs/testing-plan.md).
 
 ## Roadmap
 
-- **Next**: evaluation replay and regression scoring ([ADR-0009](docs/adr/0009-evaluation-replay.md),
-  design proposed); OIDC attribution (Keycloak, Entra ID) alongside team keys.
-- **Then**: amortised and shared-pool pricing for
-  self-hosted models with token budgets.
-- **Later**: PII policy (Presidio); shared rate limits for multi-replica deployments;
-  Terraform module for Azure Container Apps + Key Vault + PostgreSQL; Grafana dashboard.
+- **Next**: OIDC attribution (Entra ID app roles, Keycloak client roles) alongside team keys;
+  evaluation replay and regression scoring ([ADR-0009](docs/adr/0009-evaluation-replay.md),
+  design proposed).
+- **Then**: token budgets and amortised or shared-pool pricing for self-hosted models;
+  FOCUS-format export of the ledger; schema migrations (Alembic) instead of `create_all`.
+- **Later**: PII and content hooks; shared rate limits (Redis) for multi-replica deployments;
+  Helm chart; Anthropic Messages adapter and Claude in Microsoft Foundry.
 
 ## Contributing
 

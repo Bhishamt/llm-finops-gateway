@@ -1,12 +1,15 @@
 # Manual test plan
 
 Scope: the gateway on a laptop (Ollama, or the simulated demo if Ollama is unavailable) and on
-a disposable Azure OpenAI resource. Automated tests (`pytest -q`, 111 cases) cover the same
-behaviour with a fake provider; this plan is for seeing it end to end and for collecting the
-screenshots used in the README and the launch posts.
+a disposable Azure OpenAI resource. Automated tests (`pytest -q`, 185 cases, plus 3 against
+PostgreSQL when `LFG_TEST_DATABASE_URL` is set) cover the same behaviour with a fake provider;
+this plan is for seeing it end to end and for collecting the screenshots used in the README
+and the launch posts.
 
-Last run: 2026-10-28 on macOS (Apple M1, 8 GB), Python 3.12, Ollama 0.40 with `llama3.2:3b`.
-Sections 0 to 3c passed; see the sign-off table and the observations at the end.
+Runs: 2026-10-28 on macOS (Apple M1, 8 GB), Python 3.12, Ollama 0.40 with `llama3.2:3b`,
+sections 0 to 3c; 2026-10-30 sections 3d, 4 and 5 on Azure OpenAI in Sweden Central;
+2026-10-31 the Cost Management reconciliation (4.5) and the Container Apps deployment (5b).
+See the sign-off table and the observations at the end.
 
 Each step lists the command, the expected result and what to capture. Tick as you go.
 

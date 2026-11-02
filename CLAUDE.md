@@ -8,7 +8,7 @@ is; keep it free of anything private.
 `llm-finops-gateway`: an OpenAI-compatible LLM gateway that makes every call attributable
 (team + project, optional use case), prices it from a versioned price book, enforces per-team
 budgets and rate limits as code, and exposes cost and policy data to Prometheus / OpenTelemetry.
-Apache-2.0, maintained by András Kelle (`andrasKelle`). Version `0.1.0`, first commit pushed
+Apache-2.0, maintained by András Kelle (`andrasKelle`). Version `0.2.0` (2026-11-02), first commit pushed
 2026-10-28, repository private until launch.
 
 Audience: platform / FinOps teams that put the gateway in front of Azure OpenAI, Ollama (on-prem)
@@ -43,8 +43,8 @@ examples/          OpenAI SDK examples (python/chat.py, typescript/chat.ts); gra
 deploy/azure/      main.bicep + openai-role.bicep + keys.sh + db_roles.py + README: Container Apps + PostgreSQL + Key Vault (keys.yaml there is git-ignored)
 docs/database.md   ledger engines, schema, PostgreSQL roles (lfgadmin/lfg_app/lfg_reporting), operations
 docs/              architecture.md, deployment.md, azure-setup.md, testing-plan.md, comparison.md,
-                   first-publish.md, adr/0001..0018
-tests/             one test module per source module, 117 tests, FakeProvider in conftest.py
+                   adr/0001..0018
+tests/             one test module per source module, 185 tests (+3 PostgreSQL tests when LFG_TEST_DATABASE_URL is set), FakeProvider in conftest.py
 ```
 
 ## Behaviour that must not regress
@@ -168,8 +168,9 @@ Fixed and merged on 2026-10-28 (PRs #6 and #8), all green since:
   no release had been published before). Assets: `llm_finops_gateway-0.1.0-py3-none-any.whl`,
   `llm_finops_gateway-0.1.0.tar.gz`; image tags `v0.1.0` and `latest`. The image is private
   until launch (package visibility is set separately from the repository).
+- `v0.2.0` (2026-11-02): the Azure release; tag on `main` after the release PR, same workflow.
 
 Repository settings: Workflow permissions "Read and write" (needed by `cla` and `release`);
 automatic deletion of merged head branches is on; Discussions and topics are not set yet;
 branch protection is not available while the repository is private on the free plan, enable
-it at launch (see `docs/first-publish.md`).
+it at launch.

@@ -6,6 +6,7 @@
 /src/llm_finops_gateway/ledger.py       @andrasKelle
 /config/                @andrasKelle
 /docs/adr/              @andrasKelle
+/deploy/                @andrasKelle
 /GOVERNANCE.md          @andrasKelle
 /CLA.md                 @andrasKelle
 /LICENSE                @andrasKelle

@@ -4,7 +4,8 @@
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 0.1.x   | yes (current)      |
+| 0.2.x   | yes (current)      |
+| 0.1.x   | no                 |
 
 Until 1.0 only the latest minor release receives fixes.
 
@@ -26,7 +27,7 @@ credit you in the release notes unless you prefer otherwise.
 ## Scope
 
 In scope: the gateway service, its configuration loading, provider adapters, ledger and any
-official container image or Terraform module in this repository.
+official container image or Bicep template in this repository.
 
 Out of scope: vulnerabilities in upstream providers (Azure OpenAI, Ollama), in dependencies that
 are already public, and findings that require a compromised host or a misconfigured deployment
@@ -40,8 +41,13 @@ contrary to the documentation.
   cost, model and attribution tags. Future tracing features will be opt-in and documented.
 - `.env` and `*.db` are git-ignored. Rotate any key you suspect was committed.
 - Team keys (ADR-0006) identify the calling team, not a person, and are the only built-in
-  authentication. Run the gateway on an internal network or behind your platform's ingress auth
+  authentication, for the model endpoint and for the reports (`role: finops` reads every
+  team). Run the gateway on an internal network or behind your platform's ingress auth
   (Azure Container Apps auth, API Management, an OAuth proxy); do not expose it publicly.
+- On Azure the reference deployment calls Azure OpenAI with a managed identity (no provider
+  key), keeps the database password, connection URLs and raw team keys in Key Vault, and
+  runs the gateway against the database as a role that cannot delete (`docs/database.md`).
+- Webhook URLs for alerts are secrets (`SecretStr`) and never logged.
 
 ## Dependency hygiene
 
