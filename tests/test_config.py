@@ -77,6 +77,7 @@ def test_azure_endpoint_without_key_fails_fast(monkeypatch: pytest.MonkeyPatch) 
 
 
 def test_azure_entra_auth_needs_no_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    pytest.importorskip("azure.identity", reason="[azure] extra not installed")
     monkeypatch.setenv("LFG_PROVIDER", "azure_openai")
     monkeypatch.setenv("LFG_AZURE_OPENAI_ENDPOINT", "https://res.openai.azure.com")
     monkeypatch.setenv("LFG_AZURE_OPENAI_AUTH", "entra")
