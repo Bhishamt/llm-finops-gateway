@@ -8,6 +8,14 @@ is called out here.
 ## [Unreleased]
 
 ### Added
+- Nothing yet.
+
+## [0.2.0] - 2026-11-02
+
+The Azure release: everything needed to put the gateway in front of real traffic in Azure and
+prove the ledger against the bill.
+
+### Added
 - Generic OpenAI-compatible provider (`LFG_PROVIDER=openai_compat`): base URL, optional bearer
   key, extra headers and a model name map. Covers the Azure OpenAI v1 endpoint of Azure AI
   Foundry resources, vLLM, LocalAI and OpenAI (ADR-0010).
@@ -150,5 +158,6 @@ First public release.
   results, comparison with existing gateways, ADRs 0001 to 0009, CONTRIBUTING, GOVERNANCE,
   CODE_OF_CONDUCT, SECURITY, CLA, MAINTAINERS.
 
-[Unreleased]: https://github.com/andrasKelle/llm-finops-gateway/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/andrasKelle/llm-finops-gateway/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/andrasKelle/llm-finops-gateway/releases/tag/v0.2.0
 [0.1.0]: https://github.com/andrasKelle/llm-finops-gateway/releases/tag/v0.1.0

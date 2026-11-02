@@ -17,7 +17,7 @@ Decision-making and roles are in [GOVERNANCE.md](GOVERNANCE.md); expected behavi
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
+pip install -e ".[dev,demo,otel,azure,postgres]"
 pre-commit install
 ```
 

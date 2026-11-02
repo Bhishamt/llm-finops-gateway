@@ -8,7 +8,7 @@ allow-list, rejected for an unpriced model, rejected for a missing owner.
 pip install -e ".[demo]"
 python demo/run_demo.py                      # in-process, simulated provider, no keys
 python demo/run_demo.py --calls 1000 --seed 7
-python demo/run_demo.py --mode live --url http://localhost:8080 --model gpt-4o-mini --calls 30
+python demo/run_demo.py --mode live --url http://localhost:8080 --model gpt-4.1-mini --calls 30
 ```
 
 Outputs in `demo/out/` (git-ignored): `report.md`, `summary.json`, `chargeback.png`.
