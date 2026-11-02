@@ -168,7 +168,11 @@ Fixed and merged on 2026-10-28 (PRs #6 and #8), all green since:
   no release had been published before). Assets: `llm_finops_gateway-0.1.0-py3-none-any.whl`,
   `llm_finops_gateway-0.1.0.tar.gz`; image tags `v0.1.0` and `latest`. The image is private
   until launch (package visibility is set separately from the repository).
-- `v0.2.0` (2026-11-02): the Azure release; tag on `main` after the release PR, same workflow.
+- `v0.2.0` released on 2026-11-02 with the same workflow: release PR #29 merged into `main`
+  (2f8d75c), tag `v0.2.0` on that merge commit, release run green on the first try. Assets:
+  `llm_finops_gateway-0.2.0-py3-none-any.whl`, `llm_finops_gateway-0.2.0.tar.gz`; image tags
+  `v0.2.0` and `latest`. The Azure Container App `lfg-gateway` runs the `v0.2.0` image
+  (built with `az acr build`, revision 4, `/healthz` reports 0.2.0).
 
 Repository settings: Workflow permissions "Read and write" (needed by `cla` and `release`);
 automatic deletion of merged head branches is on; Discussions and topics are not set yet;
