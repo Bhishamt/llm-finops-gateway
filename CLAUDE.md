@@ -30,6 +30,7 @@ src/llm_finops_gateway/
   auth.py          KeyRing (SHA-256 hashes from config/keys.yaml), generate_key(), hash_key()
   attribution.py   Attribution(team, project, use_case, key_id); api_key vs headers mode
   enforcement.py   rejection() and the X-FinOps-* header builders shared by main.py and the plugin
+  reload.py        WatchedFile: price book and policies reloaded on change (ADR-0022)
   litellm_plugin.py FinOpsPlugin (LiteLLM CustomLogger): the same rules inside a LiteLLM proxy (ADR-0019)
   providers/       base.py (Provider protocol), ollama.py, azure_openai.py, openai_compat.py (ADR-0010),
                    azure_identity.py (Entra ID tokens, [azure] extra, ADR-0014)
@@ -46,8 +47,8 @@ examples/          OpenAI SDK examples (python/chat.py, typescript/chat.ts); lit
 deploy/azure/      main.bicep + openai-role.bicep + keys.sh + db_roles.py + README: Container Apps + PostgreSQL + Key Vault (keys.yaml there is git-ignored)
 docs/database.md   ledger engines, schema, PostgreSQL roles (lfgadmin/lfg_app/lfg_reporting), operations
 docs/              architecture.md, deployment.md, azure-setup.md, testing-plan.md, comparison.md,
-                   litellm.md, adr/0001..0020
-tests/             one test module per source module, 208 tests (+3 PostgreSQL tests when LFG_TEST_DATABASE_URL is set;
+                   litellm.md, adr/0001..0022
+tests/             one test module per source module, 214 tests (+3 PostgreSQL tests when LFG_TEST_DATABASE_URL is set;
                    the 11 LiteLLM plugin tests skip without the [litellm] extra), FakeProvider in conftest.py
 ```
 
@@ -119,7 +120,7 @@ Bias toward caution over speed; for trivial tasks use judgment.
 - `make check` must be green before any commit: ruff (lint + format), mypy `--strict` on
   `src` and `tests`, pytest. Pre-commit is installed by `make install`.
 - Every module has a test module; new behaviour comes with a test in the same change.
-- Every design decision gets an ADR in `docs/adr/` (next number: 0021). ADR-0009 (evaluation
+- Every design decision gets an ADR in `docs/adr/` (next number: 0023). ADR-0009 (evaluation
   replay) is Proposed, not implemented.
 - Decimal for money everywhere; never float.
 - Secrets only via env / `SecretStr`. Never commit a raw `lfg_` key, `.env`, `*.db`, `demo/out/`.
@@ -129,7 +130,8 @@ Bias toward caution over speed; for trivial tasks use judgment.
   Merged head branches are deleted automatically by GitHub.
 - No em dashes in prose (README, docs, ADRs); rephrase instead.
 - `serve` reads `config/` relative to the working directory, or `LFG_PRICING_PATH`,
-  `LFG_POLICIES_PATH`, `LFG_KEYS_PATH`. The venv and the config must be in the same checkout.
+  `LFG_POLICIES_PATH`, `LFG_KEYS_PATH`. The price book and the policy file are reloaded on
+  change (ADR-0022); the key file is not. The venv and the config must be in the same checkout.
 
 ## Running
 

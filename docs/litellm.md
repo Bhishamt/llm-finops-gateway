@@ -48,8 +48,9 @@ stored by the plugin; LiteLLM's own request log is a separate, configurable feat
 The price book does not update itself: `llm-finops-gateway pricing sync` compares the file
 with the Azure Retail Prices API and prints the differences, `--write` rewrites the rows and
 bumps the version, and the change goes through a pull request like any other policy change.
-Run it on whatever cadence the organisation reviews prices (weekly, or when a model is added);
-the plugin reads the file at startup, so a deployment picks the new version up on restart.
+Run it on whatever cadence the organisation reviews prices (weekly, or when a model is added).
+The plugin watches both files and picks an edit up on the next call, no restart (ADR-0022);
+mount the directory, not the single file, so that a rename-based edit is visible.
 The ledger grows by one row per served call and one counter per team, project and month, and
 is never pruned by the plugin.
 

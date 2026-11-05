@@ -37,6 +37,7 @@ from .ledger import CostEntry, Ledger
 from .policy import BudgetStatus, PolicyEngine, PolicySet, estimate_cost, project_scope
 from .pricing import PriceBook, UnknownModelError
 from .providers.base import TokenUsage
+from .reload import WatchedFile
 
 log = logging.getLogger(__name__)
 
@@ -101,6 +102,8 @@ class FinOpsPlugin(CustomLogger):
         self._ledger = ledger
         self._engine: PolicyEngine | None = None
         self._pending: dict[str, _Pending] = {}
+        self._book_watch: WatchedFile[PriceBook] | None = None
+        self._policy_watch: WatchedFile[PolicySet] | None = None
 
     # ---- wiring ---------------------------------------------------------------------
 
@@ -110,13 +113,20 @@ class FinOpsPlugin(CustomLogger):
         if self._engine is None:
             settings = self._settings or Settings()
             if self._book is None:
-                self._book = PriceBook.from_yaml(settings.pricing_path)
-            if self._policies is None:
-                self._policies = (
-                    PolicySet.from_yaml(settings.policies_path)
-                    if settings.policies_path.exists()
-                    else PolicySet.empty()
+                self._book_watch = WatchedFile(
+                    settings.pricing_path, PriceBook.from_yaml, lambda b: f"version {b.version}"
                 )
+                self._book = self._book_watch.value
+            if self._policies is None:
+                if settings.policies_path.exists():
+                    self._policy_watch = WatchedFile(
+                        settings.policies_path,
+                        PolicySet.from_yaml,
+                        lambda p: f"version {p.version}",
+                    )
+                    self._policies = self._policy_watch.value
+                else:
+                    self._policies = PolicySet.empty()
             if self._ledger is None:
                 self._ledger = Ledger(settings.database_url)
             self._engine = PolicyEngine(self._policies, self._ledger)
@@ -128,6 +138,14 @@ class FinOpsPlugin(CustomLogger):
                 len(self._book.models()),
             )
         assert self._book is not None and self._ledger is not None
+        # Hot reload (files only; injected objects are the caller's business).
+        if self._book_watch is not None:
+            self._book = self._book_watch.get()
+        if self._policy_watch is not None:
+            policies = self._policy_watch.get()
+            if policies is not self._policies:
+                self._policies = policies
+                self._engine.replace(policies)
         return self._book, self._engine, self._ledger
 
     def _sweep(self, ledger: Ledger) -> None:

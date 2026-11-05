@@ -8,6 +8,9 @@ is called out here.
 ## [Unreleased]
 
 ### Added
+- Hot reload (ADR-0022): the gateway and the LiteLLM plugin pick up edits to `pricing.yaml`
+  and `policies.yaml` on the next request, without a restart; a file that fails to parse keeps
+  the previous version in service. `/healthz` shows the versions in service.
 - Project registry and per-project budgets (ADR-0021): a team's `projects` map in
   `policies.yaml` makes an unregistered `X-Project` a `403 project_not_registered` before the
   call; a registered project may carry its own budget (reserved and settled next to the

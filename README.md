@@ -354,6 +354,12 @@ holds only what pricing needs: team, project, use case, model, tokens, cost and 
 version. Prompts and completions are never stored. Teams without a `projects` map keep the
 free-text behaviour (ADR-0021).
 
+### Edits take effect without a restart
+
+The gateway and the plugin watch `pricing.yaml` and `policies.yaml`: a merged pull request is
+in service on the next request, and `/healthz` shows the versions in use. A file that fails to
+parse keeps the previous version running and logs the error (ADR-0022).
+
 ## Endpoints
 
 | Method | Path                     | Purpose                                                    |
