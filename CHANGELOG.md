@@ -8,6 +8,9 @@ is called out here.
 ## [Unreleased]
 
 ### Added
+- The LiteLLM plugin publishes the gateway's `lfg_*` Prometheus metrics into the registry
+  LiteLLM serves on `/metrics/`, so the shipped Grafana dashboard shows LiteLLM traffic without
+  changes; `observability/prometheus.yml` scrapes the example proxy.
 - Hot reload (ADR-0022): the gateway and the LiteLLM plugin pick up edits to `pricing.yaml`
   and `policies.yaml` on the next request, without a restart; a file that fails to parse keeps
   the previous version in service. `/healthz` shows the versions in service.

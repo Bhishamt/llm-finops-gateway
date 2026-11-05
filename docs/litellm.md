@@ -85,9 +85,12 @@ curl -s -D - -o /dev/null http://localhost:4001/v1/chat/completions \
 curl -s http://localhost:8081/v1/finops/summary | python3 -m json.tool
 ```
 
-LiteLLM's own Prometheus metrics are on at `/metrics/` (trailing slash; the master key as
-bearer token) and cover requests, tokens, latency and LiteLLM's cost per team and key. To
-scrape them from the local Prometheus of `docker-compose.observability.yml`, add a job:
+The plugin publishes the gateway's own `lfg_*` metrics (requests by outcome, cost, tokens,
+upstream latency, budget ratio) into the registry LiteLLM serves on `/metrics/` (trailing
+slash; the master key as bearer token), next to LiteLLM's `litellm_*` series. The shipped
+Grafana dashboard therefore shows LiteLLM traffic unchanged. The local Prometheus of
+`docker-compose.observability.yml` scrapes it with this job (already in
+`observability/prometheus.yml`):
 
 ```yaml
   - job_name: litellm
@@ -97,13 +100,14 @@ scrape them from the local Prometheus of `docker-compose.observability.yml`, add
       - targets: ["host.docker.internal:4001"]
 ```
 
-The shipped Grafana dashboard is built on the gateway's metric names; LiteLLM traffic shows
-up in Grafana's Explore view under `litellm_*` until a LiteLLM panel set exists.
+Enable LiteLLM's own `prometheus` callback in `litellm_settings.callbacks` next to the plugin
+(as `config.plugin.yaml` does) so that the endpoint exists; the plugin's series are served
+there regardless of which callbacks are on.
 
 ## What it does not do (yet)
 
-- No Prometheus metrics and no webhook alerts from the plugin; LiteLLM's own metrics cover
-  requests and its cost, the ledger and the report page cover the FinOps view.
+- No webhook alerts from the plugin yet (LiteLLM has its own alerting); metrics are covered
+  above.
 - Only chat completions are priced; embeddings and other call types pass through untouched.
 - The report page is not inside the LiteLLM dashboard; run the gateway's `/finops` page
   against the same `LFG_DATABASE_URL` (the compose stack does this on port 8081).

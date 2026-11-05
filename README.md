@@ -61,7 +61,8 @@ The same rules ship as a LiteLLM proxy plugin: `pip install "llm-finops-gateway[
 register `llm_finops_gateway.litellm_plugin.plugin` under `litellm_settings.callbacks`, point
 `LFG_PRICING_PATH`, `LFG_POLICIES_PATH` and `LFG_DATABASE_URL` at your files, and every chat call
 through LiteLLM gets mandatory project attribution, fail-closed pricing, budgets with warn and
-block, the `X-FinOps-*` headers and a ledger row. Guide: [docs/litellm.md](docs/litellm.md),
+block, the `X-FinOps-*` headers, a ledger row and the gateway's Prometheus metrics on LiteLLM's
+own `/metrics/` endpoint, so the Grafana dashboard works unchanged. Guide: [docs/litellm.md](docs/litellm.md),
 example stack: [examples/litellm/](examples/litellm/).
 
 ## Why not LiteLLM, Portkey or an API-management gateway?

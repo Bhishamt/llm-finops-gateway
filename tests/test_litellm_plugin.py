@@ -280,3 +280,38 @@ async def test_project_registry_and_project_budget_in_litellm_mode(
     assert headers["X-FinOps-Budget-Status"] == "ok"
     assert ledger.counter("product/chat-assistant").reserved_usd == 0
     assert ledger.counter("product/chat-assistant").spent_usd == Decimal("0.00000195")
+
+
+async def test_plugin_emits_the_gateway_metrics(tmp_path: Path, ledger: Ledger) -> None:
+    from llm_finops_gateway.metrics import Metrics
+
+    (tmp_path / "pricing.yaml").write_text(PRICING)
+    (tmp_path / "policies.yaml").write_text(POLICIES)
+    metrics = Metrics()
+    p = FinOpsPlugin(
+        price_book=PriceBook.from_yaml(tmp_path / "pricing.yaml"),
+        policies=PolicySet.from_yaml(tmp_path / "policies.yaml"),
+        ledger=ledger,
+        metrics=metrics,
+    )
+    with pytest.raises(HTTPException):
+        await p.async_pre_call_hook(key(), None, request(model="mystery"), "acompletion")
+    data = await p.async_pre_call_hook(key(), None, request(), "acompletion")
+    assert data is not None
+    await p.async_post_call_response_headers_hook(data, key(), response())
+    data2 = await p.async_pre_call_hook(key(), None, request(stream=True), "acompletion")
+    assert data2 is not None
+    from datetime import datetime, timedelta
+
+    t0 = datetime(2026, 11, 5, 12, 0, 0)
+    await p.async_log_success_event(
+        success_kwargs(data2), response(), t0, t0 + timedelta(milliseconds=750)
+    )
+    text = metrics.render().decode()
+    cs = 'team="customer-support"'
+    assert f'lfg_requests_total{{model="mystery",outcome="unpriced",{cs}}} 1.0' in text
+    assert f'lfg_requests_total{{model="gpt-4o-mini",outcome="ok",{cs}}} 2.0' in text
+    assert f'lfg_cost_usd_total{{model="gpt-4o-mini",project="chat-assistant",{cs}}}' in text
+    assert f'lfg_tokens_total{{direction="input",model="gpt-4o-mini",{cs}}} 18.0' in text
+    assert 'lfg_upstream_latency_seconds_count{model="gpt-4o-mini",provider="azure"} 1.0' in text
+    assert f"lfg_budget_used_ratio{{{cs}}}" in text

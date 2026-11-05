@@ -29,11 +29,13 @@ from typing import Any
 
 from fastapi import HTTPException
 from litellm.integrations.custom_logger import CustomLogger
+from prometheus_client import REGISTRY
 
 from .attribution import Attribution, attribution_from_headers
 from .config import Settings
 from .enforcement import budget_headers, cost_headers, rejection
 from .ledger import CostEntry, Ledger
+from .metrics import Metrics
 from .policy import BudgetStatus, PolicyEngine, PolicySet, estimate_cost, project_scope
 from .pricing import PriceBook, UnknownModelError
 from .providers.base import TokenUsage
@@ -84,6 +86,15 @@ def _usage_of(obj: Any) -> TokenUsage | None:
     )
 
 
+def _seconds(start: Any, end: Any) -> float | None:
+    """Duration between LiteLLM's start_time and end_time (datetimes or floats)."""
+    try:
+        delta = end - start
+    except TypeError:
+        return None
+    return float(delta.total_seconds()) if hasattr(delta, "total_seconds") else float(delta)
+
+
 class FinOpsPlugin(CustomLogger):
     """LiteLLM callback that enforces and settles the gateway's FinOps policy."""
 
@@ -94,12 +105,14 @@ class FinOpsPlugin(CustomLogger):
         price_book: PriceBook | None = None,
         policies: PolicySet | None = None,
         ledger: Ledger | None = None,
+        metrics: Metrics | None = None,
     ) -> None:
         super().__init__()
         self._settings = settings
         self._book = price_book
         self._policies = policies
         self._ledger = ledger
+        self._metrics = metrics
         self._engine: PolicyEngine | None = None
         self._pending: dict[str, _Pending] = {}
         self._book_watch: WatchedFile[PriceBook] | None = None
@@ -129,6 +142,14 @@ class FinOpsPlugin(CustomLogger):
                     self._policies = PolicySet.empty()
             if self._ledger is None:
                 self._ledger = Ledger(settings.database_url)
+            if self._metrics is None:
+                # The default registry is what LiteLLM's /metrics/ serves (with its
+                # `prometheus` callback on), so the gateway's lfg_* series appear there too.
+                try:
+                    self._metrics = Metrics(registry=REGISTRY)
+                except ValueError:  # already registered in this process
+                    self._metrics = Metrics()
+                    log.warning("lfg_* metrics already registered; using a private registry")
             self._engine = PolicyEngine(self._policies, self._ledger)
             log.info(
                 "finops plugin ready: price book %s (%s), policies %s, %d models",
@@ -198,6 +219,7 @@ class FinOpsPlugin(CustomLogger):
 
         model = str(data.get("model") or "")
         if not book.has(model):
+            self._count(attr.team, model, "unpriced")
             raise HTTPException(status_code=422, detail=str(UnknownModelError(model)))
 
         messages = data.get("messages") or []
@@ -208,6 +230,7 @@ class FinOpsPlugin(CustomLogger):
         estimate = estimate_cost(book, model, messages, max_tokens, reserve_output, tool_chars)
         decision = engine.check(attr, model, estimate)
         if not decision.allowed:
+            self._count(attr.team, model, decision.violation or "blocked")
             status_code, detail, extra = rejection(decision, attr, model, engine.version)
             raise HTTPException(status_code=status_code, detail=detail, headers=extra)
 
@@ -223,6 +246,10 @@ class FinOpsPlugin(CustomLogger):
         data.setdefault("metadata", {})[META] = {"request_id": request_id, "team": attr.team}
         return data
 
+    def _count(self, team: str, model: str, outcome: str) -> None:
+        if self._metrics is not None:
+            self._metrics.requests.labels(team, model, outcome).inc()
+
     @staticmethod
     def _release(pending: _Pending, ledger: Ledger) -> None:
         if pending.reserved_usd:
@@ -236,7 +263,12 @@ class FinOpsPlugin(CustomLogger):
     # ---- step 4 and 5: settle, headers ------------------------------------------------
 
     def _settle(
-        self, pending: _Pending, usage: TokenUsage, provider: str, litellm_cost: Any = None
+        self,
+        pending: _Pending,
+        usage: TokenUsage,
+        provider: str,
+        litellm_cost: Any = None,
+        latency_s: float | None = None,
     ) -> tuple[Decimal, BudgetStatus | None]:
         book, engine, ledger = self._ensure()
         cost = book.cost(
@@ -269,7 +301,23 @@ class FinOpsPlugin(CustomLogger):
             cost,
             litellm_cost,
         )
-        return cost, engine.budget_status(pending.attr.team)
+        status = engine.budget_status(pending.attr.team)
+        if self._metrics is not None:
+            attr = pending.attr
+            self._metrics.observe_cost(
+                attr.team,
+                attr.project,
+                pending.model,
+                cost,
+                usage.input_tokens,
+                usage.output_tokens,
+            )
+            self._count(attr.team, pending.model, "warned" if pending.warnings else "ok")
+            if status is not None:
+                self._metrics.budget_used.labels(attr.team).set(float(status.used_pct) / 100)
+            if latency_s is not None:
+                self._metrics.upstream_latency.labels(provider, pending.model).observe(latency_s)
+        return cost, status
 
     def _project_status(self, pending: _Pending) -> BudgetStatus | None:
         return self._ensure()[1].project_budget_status(pending.attr.team, pending.attr.project)
@@ -334,7 +382,9 @@ class FinOpsPlugin(CustomLogger):
             self._release(pending, self._ensure()[2])
             return
         provider = str(slo.get("custom_llm_provider") or "litellm")
-        self._settle(pending, usage, provider, kwargs.get("response_cost"))
+        self._settle(
+            pending, usage, provider, kwargs.get("response_cost"), _seconds(start_time, end_time)
+        )
 
     async def async_log_failure_event(
         self, kwargs: dict[str, Any], response_obj: Any, start_time: Any, end_time: Any
@@ -345,6 +395,7 @@ class FinOpsPlugin(CustomLogger):
         pending = self._pending.pop(str(meta["request_id"]), None)
         if pending is not None:
             self._release(pending, self._ensure()[2])
+            self._count(pending.attr.team, pending.model, "upstream_error")
             log.info("released reservation after failure request_id=%s", pending.request_id)
 
 
