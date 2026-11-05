@@ -13,10 +13,11 @@ import time
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Annotated, Any
 
-from fastapi import Depends, FastAPI, Form, HTTPException, Request, Response
+from fastapi import Depends, FastAPI, Form, HTTPException, Query, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 
 from . import __version__
@@ -25,6 +26,7 @@ from .attribution import Attribution, resolve_attribution
 from .auth import KeyRing
 from .config import ProviderKind, Settings
 from .enforcement import budget_headers, cost_headers, rejection
+from .focus import focus_csv
 from .ledger import CostEntry, Ledger
 from .metrics import CONTENT_TYPE, Metrics
 from .models import (
@@ -693,6 +695,30 @@ def create_app(
             content=summary_csv(summary.rows, summary.currency),
             media_type="text/csv",
             headers={"Content-Disposition": 'attachment; filename="llm-finops-summary.csv"'},
+        )
+
+    @app.get("/v1/finops/export.focus.csv", include_in_schema=True)
+    async def finops_export_focus(
+        scope: Annotated[ReportScope, Depends(resolve_report_scope)],
+        state: Annotated[Any, Depends(_state)],
+        team: str | None = None,
+        project: str | None = None,
+        from_: Annotated[date | None, Query(alias="from")] = None,
+        to: date | None = None,
+    ) -> Response:
+        """The ledger as FOCUS rows per day (ADR-0023); ``from`` inclusive, ``to`` exclusive,
+        default the current calendar month to date."""
+        start = datetime(from_.year, from_.month, from_.day, tzinfo=UTC) if from_ else month_start()
+        end = datetime(to.year, to.month, to.day, tzinfo=UTC) if to else datetime.now(UTC)
+        if end <= start:
+            raise HTTPException(status_code=422, detail="'to' must be after 'from'")
+        rows = ledger.rows(start, end, scope.narrow(team), project)
+        content = focus_csv(rows, state.price_book.currency, start, end)
+        name = f"llm-finops-focus-{start:%Y%m%d}-{end:%Y%m%d}.csv"
+        return Response(
+            content=content,
+            media_type="text/csv",
+            headers={"Content-Disposition": f'attachment; filename="{name}"'},
         )
 
     @app.get("/v1/finops/budgets", response_model=BudgetReport)

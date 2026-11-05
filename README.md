@@ -381,6 +381,7 @@ parse keeps the previous version running and logs the error (ADR-0022).
 | GET    | `/v1/finops/summary`     | Cost grouped by team / project / model, filterable         |
 | GET    | `/v1/finops/summary.csv` | The same rows as CSV for spreadsheets and BI tools         |
 | GET    | `/v1/finops/budgets`     | Month-to-date budget, rate limit and allow-list per team   |
+| GET    | `/v1/finops/export.focus.csv` | The ledger as FOCUS rows per day (`from`, `to`, `team`, `project`), for FinOps datasets |
 | GET    | `/metrics`               | Prometheus: requests by outcome, cost, tokens, latency, budget ratio |
 | GET    | `/healthz`               | Liveness, version, auth mode, price book and policy versions |
 | GET    | `/docs`                  | OpenAPI UI                                                 |

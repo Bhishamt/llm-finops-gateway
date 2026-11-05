@@ -143,6 +143,45 @@ def _ledger_reconcile(args: argparse.Namespace) -> None:
     print(format_report(report))
 
 
+def _ledger_export(args: argparse.Namespace) -> None:
+    from datetime import UTC, date, datetime
+
+    from .config import Settings
+    from .focus import focus_csv
+    from .ledger import Ledger
+    from .policy import month_start
+    from .pricing import PriceBook
+
+    settings = Settings()
+    start = (
+        datetime.combine(date.fromisoformat(args.from_day), datetime.min.time(), tzinfo=UTC)
+        if args.from_day
+        else month_start()
+    )
+    end = (
+        datetime.combine(date.fromisoformat(args.to_day), datetime.min.time(), tzinfo=UTC)
+        if args.to_day
+        else datetime.now(UTC)
+    )
+    if end <= start:
+        print("--to must be after --from", file=sys.stderr)
+        sys.exit(2)
+    rows = Ledger(settings.database_url).rows(start, end, args.team, args.project)
+    text = focus_csv(
+        rows,
+        PriceBook.from_yaml(settings.pricing_path).currency,
+        start,
+        end,
+        billing_account_id=args.billing_account or "",
+        billing_account_name=args.billing_account or "",
+    )
+    if args.out:
+        Path(args.out).write_text(text, encoding="utf-8")
+        print(f"wrote {len(text.splitlines()) - 1} FOCUS rows to {args.out}", file=sys.stderr)
+    else:
+        sys.stdout.write(text)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="llm-finops-gateway")
     sub = parser.add_subparsers(dest="command")
@@ -208,6 +247,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--token", help="management-scope bearer token; default: DefaultAzureCredential"
     )
     rc.set_defaults(func=_ledger_reconcile)
+    ex = lsub.add_parser("export", help="export the ledger in the FOCUS format (ADR-0023)")
+    ex.add_argument("--from", dest="from_day", help="UTC day, inclusive; default: month start")
+    ex.add_argument("--to", dest="to_day", help="UTC day, exclusive; default: now")
+    ex.add_argument("--team")
+    ex.add_argument("--project")
+    ex.add_argument("--billing-account", help="BillingAccountId and BillingAccountName value")
+    ex.add_argument("--out", help="file to write; default: stdout")
+    ex.set_defaults(func=_ledger_export)
 
     alerts = sub.add_parser("alerts", help="webhook alerts (ADR-0017)")
     asub = alerts.add_subparsers(dest="alerts_command", required=True)
