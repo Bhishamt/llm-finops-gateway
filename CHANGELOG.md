@@ -8,7 +8,21 @@ is called out here.
 ## [Unreleased]
 
 ### Added
-- Nothing yet.
+- Project registry and per-project budgets (ADR-0021): a team's `projects` map in
+  `policies.yaml` makes an unregistered `X-Project` a `403 project_not_registered` before the
+  call; a registered project may carry its own budget (reserved and settled next to the
+  team's, counter scope `team/project`), its own `allowed_models` and a `use_cases` list.
+  `x_finops.policy.project_budget` and `X-FinOps-Project-Budget-*` headers report its state.
+- LiteLLM proxy plugin (`llm_finops_gateway.litellm_plugin`, extra `[litellm]`): the same
+  attribution, price book, budget and ledger rules inside an existing LiteLLM proxy through
+  three hooks; `X-FinOps-*` headers on non-streaming responses, streamed calls settled from the
+  final usage; `examples/litellm/` with a compose stack, a Dockerfile for the official image and
+  a demo walkthrough (ADR-0019). ADR-0020 states what stays in this repository and what an
+  enterprise layer adds.
+
+### Changed
+- The HTTP shape of a policy decision (status code, error body, `X-FinOps-*` headers) moved
+  from `main.py` into `enforcement.py`, shared by the gateway and the plugin; no behaviour change.
 
 ## [0.2.0] - 2026-11-02
 

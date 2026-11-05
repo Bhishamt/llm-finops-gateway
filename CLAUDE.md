@@ -29,6 +29,8 @@ src/llm_finops_gateway/
   ledger.py        SQLAlchemy ledger (cost_records, budget_counters), reserve/settle/release
   auth.py          KeyRing (SHA-256 hashes from config/keys.yaml), generate_key(), hash_key()
   attribution.py   Attribution(team, project, use_case, key_id); api_key vs headers mode
+  enforcement.py   rejection() and the X-FinOps-* header builders shared by main.py and the plugin
+  litellm_plugin.py FinOpsPlugin (LiteLLM CustomLogger): the same rules inside a LiteLLM proxy (ADR-0019)
   providers/       base.py (Provider protocol), ollama.py, azure_openai.py, openai_compat.py (ADR-0010),
                    azure_identity.py (Entra ID tokens, [azure] extra, ADR-0014)
   metrics.py       Prometheus; telemetry.py optional OTel ([otel] extra, finops.* span attrs)
@@ -39,12 +41,14 @@ src/llm_finops_gateway/
   alerts.py        Alerter: webhook POST per budget/upstream event, cooldown, background delivery (ADR-0017)
 config/            pricing.yaml, policies.yaml, keys.yaml (hashes only, repo copy is `keys: []`)
 demo/              run_demo.py (simulated or live), policies.yaml (tiny budgets), README.md
-examples/          OpenAI SDK examples (python/chat.py, typescript/chat.ts); grafana/ dashboard JSON
+examples/          OpenAI SDK examples (python/chat.py, typescript/chat.ts); litellm/ compose stack,
+                   Dockerfile and demo.sh for the plugin; grafana/ dashboard JSON
 deploy/azure/      main.bicep + openai-role.bicep + keys.sh + db_roles.py + README: Container Apps + PostgreSQL + Key Vault (keys.yaml there is git-ignored)
 docs/database.md   ledger engines, schema, PostgreSQL roles (lfgadmin/lfg_app/lfg_reporting), operations
 docs/              architecture.md, deployment.md, azure-setup.md, testing-plan.md, comparison.md,
-                   adr/0001..0018
-tests/             one test module per source module, 185 tests (+3 PostgreSQL tests when LFG_TEST_DATABASE_URL is set), FakeProvider in conftest.py
+                   litellm.md, adr/0001..0020
+tests/             one test module per source module, 208 tests (+3 PostgreSQL tests when LFG_TEST_DATABASE_URL is set;
+                   the 11 LiteLLM plugin tests skip without the [litellm] extra), FakeProvider in conftest.py
 ```
 
 ## Behaviour that must not regress
@@ -54,6 +58,11 @@ tests/             one test module per source module, 185 tests (+3 PostgreSQL t
   `headers` mode. `X-Team` that contradicts the key -> 403 `team_mismatch`. Missing -> 400
   `missing_attribution`, missing/invalid key -> 401 with `WWW-Authenticate`.
 - Unknown model -> 422 before any provider call (ADR-0002). No price, no call.
+- Project registry (ADR-0021): a team with a `projects` map rejects an unregistered project
+  with 403 `project_not_registered` and a use case outside `use_cases` with 403
+  `use_case_not_registered`, before any provider call; a project budget is reserved and
+  settled next to the team's under the counter scope `team/project`; teams without the map
+  keep free-text projects.
 - Budget: `monthly_usd`, `warn_at` (0.8), `block_at` (1.0), `enforcement: block|warn`,
   `reserve_output_tokens`. Estimated cost is reserved atomically in `budget_counters` before the
   upstream call, settled with the ledger row in one transaction, released on failure
@@ -110,7 +119,7 @@ Bias toward caution over speed; for trivial tasks use judgment.
 - `make check` must be green before any commit: ruff (lint + format), mypy `--strict` on
   `src` and `tests`, pytest. Pre-commit is installed by `make install`.
 - Every module has a test module; new behaviour comes with a test in the same change.
-- Every design decision gets an ADR in `docs/adr/` (next number: 0019). ADR-0009 (evaluation
+- Every design decision gets an ADR in `docs/adr/` (next number: 0021). ADR-0009 (evaluation
   replay) is Proposed, not implemented.
 - Decimal for money everywhere; never float.
 - Secrets only via env / `SecretStr`. Never commit a raw `lfg_` key, `.env`, `*.db`, `demo/out/`.
@@ -133,6 +142,10 @@ llm-finops-gateway keys new --team platform --id platform-main   # prints raw ke
 llm-finops-gateway keys check
 LFG_PROVIDER=ollama llm-finops-gateway serve         # http://127.0.0.1:8080
 ```
+
+LiteLLM plugin: `pip install -e ".[litellm]"` needs Python <= 3.13 (no LiteLLM wheel for 3.15 yet);
+`.venv313` is the local venv for it, CI covers it on 3.11 and 3.12. `examples/litellm/demo.sh` walks
+the six calls against the compose stack.
 
 Azure OpenAI: `LFG_PROVIDER=azure_openai` plus `LFG_AZURE_OPENAI_ENDPOINT`,
 `LFG_AZURE_OPENAI_API_KEY`, `LFG_AZURE_OPENAI_DEPLOYMENTS` (model -> deployment), see
