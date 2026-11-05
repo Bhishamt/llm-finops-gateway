@@ -41,6 +41,11 @@ the browser's local storage.
 
 ## Spreadsheets and BI tools
 
+`GET /v1/finops/export.focus.csv?from=2026-11-01&to=2026-12-01` returns the ledger in the
+FinOps Open Cost and Usage Specification (FOCUS) format, one row per team, project, use case,
+provider, model, price book version and UTC day, with the mandatory FOCUS 1.1 columns and
+`x_` columns for token detail (ADR-0023); `llm-finops-gateway ledger export --from ... --to ...`
+writes the same file from the command line for scheduled loads into a FOCUS dataset.
 `GET /v1/finops/summary.csv` returns the chargeback rows as CSV with the same access rule, and
 the ledger database has a read-only role (`lfg_reporting` on the Azure deployment,
 [database.md](database.md)). That is the whole contract: any spreadsheet or BI tool that can

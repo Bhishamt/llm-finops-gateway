@@ -8,6 +8,9 @@ is called out here.
 ## [Unreleased]
 
 ### Added
+- FOCUS export (ADR-0023): `GET /v1/finops/export.focus.csv` and `ledger export` write the
+  ledger as FOCUS 1.1 rows per team, project, use case, provider, model, price book version
+  and UTC day, with `x_` columns for calls and token detail.
 - `examples/assistant/`: a Streamlit page that chats through the gateway or the plugin and
   shows the FinOps receipt next to every answer (roles as team keys, project and use case
   fields, team and project budget bars, rejections), plus a documentation Q&A panel routed

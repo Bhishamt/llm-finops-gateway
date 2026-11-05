@@ -96,6 +96,25 @@ class ModelUsage:
 
 
 @dataclass(frozen=True)
+class LedgerRow:
+    """One ledger row as stored (reads, exports)."""
+
+    ts: datetime
+    request_id: str
+    team: str
+    project: str
+    use_case: str
+    key_id: str | None
+    provider: str
+    model: str
+    input_tokens: int
+    output_tokens: int
+    cached_input_tokens: int
+    cost_usd: Decimal
+    price_book_version: str
+
+
+@dataclass(frozen=True)
 class SummaryRow:
     team: str
     project: str
@@ -254,6 +273,44 @@ class Ledger:
             )
             for r in rows
         ]
+
+    def rows(
+        self,
+        since: datetime,
+        until: datetime,
+        team: str | None = None,
+        project: str | None = None,
+    ) -> list[LedgerRow]:
+        """Ledger rows with ``since <= ts < until``, oldest first."""
+        stmt = (
+            select(CostRecord)
+            .where(CostRecord.ts >= since, CostRecord.ts < until)
+            .order_by(CostRecord.ts, CostRecord.id)
+        )
+        if team:
+            stmt = stmt.where(CostRecord.team == team)
+        if project:
+            stmt = stmt.where(CostRecord.project == project)
+        with Session(self._engine) as session:
+            records = session.execute(stmt).scalars().all()
+            return [
+                LedgerRow(
+                    ts=r.ts if r.ts.tzinfo is not None else r.ts.replace(tzinfo=UTC),
+                    request_id=r.request_id,
+                    team=r.team,
+                    project=r.project,
+                    use_case=r.use_case,
+                    key_id=r.key_id,
+                    provider=r.provider,
+                    model=r.model,
+                    input_tokens=r.input_tokens,
+                    output_tokens=r.output_tokens,
+                    cached_input_tokens=r.cached_input_tokens,
+                    cost_usd=clean(r.cost_usd),
+                    price_book_version=r.price_book_version,
+                )
+                for r in records
+            ]
 
     def summary(self, team: str | None = None, project: str | None = None) -> list[SummaryRow]:
         stmt = (
