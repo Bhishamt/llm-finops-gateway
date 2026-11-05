@@ -28,10 +28,12 @@ from typing import Annotated, Any
 from fastapi import Header, HTTPException, Request
 
 from .auth import ApiKey, KeyRing
+from .litellm_ui import SESSION_COOKIE, verify_session
 from .models import CostSummaryRow, TeamBudgetRow
 from .pricing import money
 
 COOKIE = "lfg_report_key"
+PLUGIN_COOKIE = SESSION_COOKIE
 
 
 @dataclass(frozen=True)
@@ -57,6 +59,15 @@ def _key_from(keyring: KeyRing, raw: str) -> ApiKey:
 
 def scope_for(request: Request, authorization: str | None, x_team: str | None) -> ReportScope:
     settings = request.app.state.settings
+    if settings.litellm_plugin_name and settings.litellm_salt_key:
+        # A LiteLLM dashboard session (ADR-0024) sees every team, like a finops key.
+        session = verify_session(
+            settings.litellm_salt_key.get_secret_value(),
+            settings.litellm_plugin_name,
+            request.cookies.get(PLUGIN_COOKIE),
+        )
+        if session is not None:
+            return ReportScope(team=x_team or None, key_id=f"litellm:{session['user_id']}")
     if settings.auth_mode != "api_key":
         return ReportScope(team=x_team or None)
     raw: str | None = None
