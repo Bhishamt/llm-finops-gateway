@@ -11,6 +11,7 @@
 #   litellm         port 4000, the probe callback only (prints what each hook sees)
 #   litellm-finops  port 4001, the FinOps plugin: price book, policies and a ledger of its own
 #   finops-report   port 8081, the gateway's /finops page and summary APIs over that ledger
+#   assistant       port 8501, the Streamlit assistant (examples/assistant) against the plugin proxy
 services:
   litellm:
     # LiteLLM 1.108.0 (main-stable on 2026-11-05), pinned by digest so the hooks tested here do not move.
@@ -69,6 +70,20 @@ services:
       - ../../config:/app/finops-config:ro
       - .:/app/finops-example:ro
       - finops-ledger:/data
+  # The assistant example (examples/assistant): http://localhost:8501
+  assistant:
+    build:
+      context: ../..
+      dockerfile: examples/assistant/Dockerfile
+    image: lfg-assistant:dev
+    ports: ["8501:8501"]
+    depends_on: [litellm-finops, finops-report]
+    env_file: ./.demo-keys/assistant.env   # written by demo.sh (run it once first): LFG_ASSISTANT_KEYS
+    environment:
+      LFG_ASSISTANT_TARGET_URL: http://litellm-finops:4000
+      LFG_ASSISTANT_REPORT_URL: http://finops-report:8080
+      LFG_ASSISTANT_MODELS: gpt-4.1-mini,gpt-5-mini
+      LFG_ASSISTANT_QA_TEAM: ceo
   litellm-db:
     image: postgres:16-alpine
     environment:

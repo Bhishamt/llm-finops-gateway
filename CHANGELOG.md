@@ -8,6 +8,10 @@ is called out here.
 ## [Unreleased]
 
 ### Added
+- `examples/assistant/`: a Streamlit page that chats through the gateway or the plugin and
+  shows the FinOps receipt next to every answer (roles as team keys, project and use case
+  fields, team and project budget bars, rejections), plus a documentation Q&A panel routed
+  through the same gateway; extra `[assistant]`, Dockerfile and compose service on port 8501.
 - The LiteLLM plugin publishes the gateway's `lfg_*` Prometheus metrics into the registry
   LiteLLM serves on `/metrics/`, so the shipped Grafana dashboard shows LiteLLM traffic without
   changes; `observability/prometheus.yml` scrapes the example proxy.

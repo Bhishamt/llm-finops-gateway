@@ -65,6 +65,16 @@ block, the `X-FinOps-*` headers, a ledger row and the gateway's Prometheus metri
 own `/metrics/` endpoint, so the Grafana dashboard works unchanged. Guide: [docs/litellm.md](docs/litellm.md),
 example stack: [examples/litellm/](examples/litellm/).
 
+## Try it from a browser
+
+`examples/assistant/` is a small Streamlit page: pick a role (a team key), a project and a use
+case, chat, and read the receipt next to every answer: cost, team and project budget,
+warnings, or the rejection that stopped the call before the model. A second panel answers
+questions about this project from its documentation, through the same gateway, so that
+traffic is attributed too. `pip install "llm-finops-gateway[assistant]"` and
+`streamlit run examples/assistant/app.py`, or the `assistant` service of the LiteLLM compose
+stack on port 8501.
+
 ## Why not LiteLLM, Portkey or an API-management gateway?
 
 Those are good routing gateways and you may already run one. This project is deliberately

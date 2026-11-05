@@ -8,7 +8,7 @@ if [ "${1:-}" = "--reset" ]; then
   # Fresh month: drop the LiteLLM database and the plugin ledger, forget the cached keys.
   docker compose --env-file ../../.env down -v
   rm -rf "${STATE_DIR:-.demo-keys}"
-  docker compose --env-file ../../.env up -d
+  docker compose --env-file ../../.env up -d --build
   for i in $(seq 1 40); do
     curl -s -m 3 -o /dev/null -w "%{http_code}" "${LITELLM_URL:-http://localhost:4001}/health/liveliness" 2>/dev/null | grep -q 200 && break
     sleep 3
@@ -35,8 +35,14 @@ show() { grep -i -E "^HTTP|^x-finops" | sed 's/^/    /'; }
 step() { printf '\n== %s\n' "$1"; }
 
 CS=$(key_for customer-support); RS=$(key_for research)
+CEO=$(key_for ceo); TL=$(key_for team-leads); EMP=$(key_for employees)
+# keys for the assistant container (examples/assistant), picked up on its next start
+printf 'LFG_ASSISTANT_KEYS={"ceo":"%s","team-leads":"%s","employees":"%s","customer-support":"%s","research":"%s"}\n' \
+  "$CEO" "$TL" "$EMP" "$CS" "$RS" > "$STATE/assistant.env"
 SMALL='{"model":"gpt-4.1-mini","messages":[{"role":"user","content":"Say OK"}],"max_tokens":5}'
-BIG=$(python3 -c 'import json;print(json.dumps({"model":"gpt-4.1-mini","messages":[{"role":"user","content":("lorem ipsum dolor sit amet "*600)+" Reply with OK."}],"max_tokens":1}))')
+# A nonce keeps the big prompt unique per run: a repeated prompt is served from Azure's prompt
+# cache at the cached-input price, which is a nice effect but would stop the budget demo.
+BIG=$(python3 -c 'import json,uuid;print(json.dumps({"model":"gpt-4.1-mini","messages":[{"role":"user","content":"run "+uuid.uuid4().hex+" "+("lorem ipsum dolor sit amet "*600)+" Reply with OK."}],"max_tokens":1}))')
 
 step "1. No X-Project: rejected before the call (400 missing_attribution)"
 curl -s -o /dev/stderr -w "    HTTP %{http_code}\n" "$B/v1/chat/completions" -H "Authorization: Bearer $CS" -H "$CT" -d "$SMALL" 2>&1 | head -c 400; echo
