@@ -1,0 +1,41 @@
+# Policies for the LiteLLM plugin example. Team names must match the team_alias of the LiteLLM
+# teams that issue the keys. Budgets are tiny on purpose so warn and block show up in a demo.
+version: "2026-11-05"
+
+defaults:
+  allowed_models: ["gpt-4.1-mini", "gpt-5-mini"]
+  budget:
+    monthly_usd: 1
+    warn_at: 0.8
+    block_at: 1.0
+    enforcement: block
+  rate_limit:
+    requests_per_minute: 60
+
+teams:
+  customer-support:
+    allowed_models: ["gpt-4.1-mini"]
+    budget:
+      monthly_usd: 0.002
+      warn_at: 0.5
+      block_at: 1.0
+      enforcement: block
+      reserve_output_tokens: 32
+    # Registry (ADR-0021): only these projects are accepted for this team.
+    projects:
+      chat-assistant:
+        budget:
+          monthly_usd: 0.0015
+          warn_at: 0.5
+          block_at: 1.0
+          enforcement: block
+          reserve_output_tokens: 32
+      internal-tools: {}
+  research:
+    allowed_models: ["*"]
+    budget:
+      monthly_usd: 0.002
+      warn_at: 0.5
+      block_at: 1.0
+      enforcement: warn
+      reserve_output_tokens: 32

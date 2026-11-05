@@ -5,6 +5,7 @@ __pycache__/
 build/
 dist/
 .venv/
+.venv*/
 venv/
 .mypy_cache/
 .ruff_cache/
@@ -30,3 +31,4 @@ examples/typescript/node_modules/
 
 # Azure deployment inputs with key hashes (generated per environment)
 deploy/azure/keys.yaml
+.demo-keys/
