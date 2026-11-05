@@ -55,6 +55,15 @@ book mismatch (regional SKU billed, global price in the book, 0.0123 USD), which
 `pricing sync --deployment regional` reports. Details in
 [docs/testing-plan.md](docs/testing-plan.md#reconciliation-of-2026-10-30-against-azure-cost-management-run-2026-10-31).
 
+## Already running LiteLLM?
+
+The same rules ship as a LiteLLM proxy plugin: `pip install "llm-finops-gateway[litellm]"`,
+register `llm_finops_gateway.litellm_plugin.plugin` under `litellm_settings.callbacks`, point
+`LFG_PRICING_PATH`, `LFG_POLICIES_PATH` and `LFG_DATABASE_URL` at your files, and every chat call
+through LiteLLM gets mandatory project attribution, fail-closed pricing, budgets with warn and
+block, the `X-FinOps-*` headers and a ledger row. Guide: [docs/litellm.md](docs/litellm.md),
+example stack: [examples/litellm/](examples/litellm/).
+
 ## Why not LiteLLM, Portkey or an API-management gateway?
 
 Those are good routing gateways and you may already run one. This project is deliberately
@@ -321,6 +330,29 @@ teams:
   instance (ADR-0008).
 - A team not listed gets `defaults`; a listed team overrides only the keys it sets.
 - Unknown keys fail at startup. No policy file means no budgets and a startup warning.
+
+### Registered projects and project budgets
+
+Attribution makes spend owned; a registry makes it governed. A team can list its projects, and
+from then on a project that is not in the list is rejected before the call:
+
+```yaml
+teams:
+  product:
+    budget: { monthly_usd: 500 }
+    projects:
+      chat-assistant:
+        budget: { monthly_usd: 120, warn_at: 0.8, block_at: 1.0 }   # its own line, next to the team's
+        use_cases: ["faq", "summaries"]                              # X-Use-Case must be one of these
+      internal-tools: {}                                            # registered, inherits the team
+```
+
+A new project is therefore a pull request before it is a line in the ledger. A project budget
+is reserved and settled next to the team's (both must fit), its state travels as
+`x_finops.policy.project_budget` and the `X-FinOps-Project-Budget-*` headers, and the ledger
+holds only what pricing needs: team, project, use case, model, tokens, cost and the price book
+version. Prompts and completions are never stored. Teams without a `projects` map keep the
+free-text behaviour (ADR-0021).
 
 ## Endpoints
 

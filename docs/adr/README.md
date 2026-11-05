@@ -23,6 +23,9 @@ immutable once accepted; a later ADR supersedes an earlier one rather than editi
 | [0016](0016-report-page-and-scoped-access.md) | A built-in report page, and who may read what | Accepted |
 | [0017](0017-webhook-alerts.md) | Webhook alerts for budget and upstream events, sent by the gateway itself | Accepted |
 | [0018](0018-ledger-reconcile.md) | Reconcile the ledger against the provider's bill, per meter, one day at a time | Accepted |
+| [0019](0019-litellm-plugin.md) | The FinOps rules as a LiteLLM plugin | Accepted |
+| [0020](0020-open-core-boundary.md) | What stays in this repository and what an enterprise layer adds | Accepted |
+| [0021](0021-project-registry-and-budgets.md) | Projects and use cases are registered in the policy file, with their own budgets | Proposed |
 
 ## Template
 
