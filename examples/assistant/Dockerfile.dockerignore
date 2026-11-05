@@ -1,0 +1,19 @@
+# Build context rules for examples/assistant/Dockerfile (BuildKit reads <Dockerfile>.dockerignore).
+# The repository's root .dockerignore drops docs/ and examples/, which this image needs.
+.git
+.venv
+.venv*
+.env
+*.db
+__pycache__
+.mypy_cache
+.ruff_cache
+.pytest_cache
+tests
+.github
+deploy
+grafana
+observability
+demo
+src
+examples/litellm/.demo-keys

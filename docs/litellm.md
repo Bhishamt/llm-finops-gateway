@@ -60,20 +60,25 @@ told about.
 
 ## Try it locally
 
-`examples/litellm/docker-compose.yml` starts three services next to a PostgreSQL store for
+`examples/litellm/docker-compose.yml` starts four services next to a PostgreSQL store for
 LiteLLM: the proxy with a probe callback only (port 4000, the "before" picture), the proxy with
-the plugin (port 4001) and the gateway's report page over the plugin's ledger (port 8081).
+the plugin (port 4001), the gateway's report page over the plugin's ledger (port 8081) and the
+Streamlit assistant (port 8501, `examples/assistant/`: roles, receipt, docs Q&A).
 
 ```bash
 cd examples/litellm
 docker compose --env-file ../../.env up -d --build      # Azure OpenAI endpoint and key from .env
 ./demo.sh                                               # creates two teams and keys, runs six calls
 open http://localhost:8081/finops                       # the same report page the gateway serves
+open http://localhost:8501                              # the assistant: pick a role, chat, read the receipt
 open http://localhost:4001/ui                           # LiteLLM admin UI, admin / the master key
 ```
 
-`demo.sh` keeps the virtual keys in `.demo-keys/` (git-ignored). The calls by hand, with the
-customer-support key:
+`demo.sh` keeps the virtual keys in `.demo-keys/` (git-ignored) and writes them for the
+assistant container, which reads them on its next start. The example policies also define
+three role teams for the assistant: `ceo` (any model, a budget it will not reach),
+`team-leads` (two models, a small budget) and `employees` (the cheapest model, the smallest
+budget). The calls by hand, with the customer-support key:
 
 ```bash
 KEY=$(cat .demo-keys/customer-support.key)
