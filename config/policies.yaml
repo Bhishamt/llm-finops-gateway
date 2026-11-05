@@ -8,8 +8,17 @@
 #   budget.enforcement   "block" (default) or "warn" (never block, only warn and log)
 #   budget.reserve_output_tokens   output tokens assumed when the request has no max_tokens (1024)
 #   rate_limit.requests_per_minute  per team, sliding 60 s window, HTTP 429 with Retry-After
+#   projects         optional registry (ADR-0021): when present, X-Project must be one of the keys;
+#                    each project may set its own budget (same keys as above), allowed_models
+#                    (narrows the team's list) and use_cases (then X-Use-Case must be one of them)
 #
 # A team not listed under `teams` gets `defaults`. A team entry overrides only the keys it sets.
+# Example of a registry:
+#   teams:
+#     product:
+#       projects:
+#         chat-assistant: { budget: { monthly_usd: 120 }, use_cases: ["faq", "summaries"] }
+#         internal-tools: {}
 version: "2026-11-01"
 
 defaults:

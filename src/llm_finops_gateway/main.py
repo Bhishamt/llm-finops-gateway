@@ -24,6 +24,7 @@ from .alerts import Alerter
 from .attribution import Attribution, resolve_attribution
 from .auth import KeyRing
 from .config import ProviderKind, Settings
+from .enforcement import budget_headers, cost_headers, rejection
 from .ledger import CostEntry, Ledger
 from .metrics import CONTENT_TYPE, Metrics
 from .models import (
@@ -50,6 +51,7 @@ from .policy import (
     estimate_cost,
     estimate_tokens,
     month_start,
+    project_scope,
 )
 from .pricing import PriceBook, UnknownModelError, money
 from .providers import Provider, ProviderError
@@ -198,16 +200,6 @@ def _stream_chunk(
     }
 
 
-def _budget_headers(response: Response, status: BudgetStatus | None, warnings: list[str]) -> None:
-    if status is not None:
-        response.headers["X-FinOps-Budget-Limit-USD"] = money(status.limit_usd)
-        response.headers["X-FinOps-Budget-Spent-USD"] = money(status.spent_usd)
-        response.headers["X-FinOps-Budget-Used-Pct"] = str(status.used_pct)
-        response.headers["X-FinOps-Budget-Status"] = status.level
-    if warnings:
-        response.headers["X-FinOps-Warning"] = " | ".join(warnings)
-
-
 def create_app(
     settings: Settings | None = None,
     *,
@@ -348,21 +340,7 @@ def create_app(
             telemetry.annotate(policy_violation=decision.violation or "")
             if decision.violation == "budget_exceeded":
                 alerter.budget_block(attr.team, decision.budget, decision.message or "")
-            detail: dict[str, Any] = {
-                "error": decision.violation,
-                "message": decision.message,
-                "team": attr.team,
-                "project": attr.project,
-                "model": req.model,
-                "policy_version": engine.version,
-            }
-            headers: dict[str, str] = {}
-            status_code = 403
-            if decision.budget is not None:
-                detail["budget"] = decision.budget.as_dict()
-            if decision.violation == "rate_limited":
-                status_code = 429
-                headers["Retry-After"] = str(decision.retry_after_seconds or 1)
+            status_code, detail, headers = rejection(decision, attr, req.model, engine.version)
             raise HTTPException(status_code=status_code, detail=detail, headers=headers)
 
         if decision.warnings and decision.budget is not None:
@@ -383,6 +361,9 @@ def create_app(
         def settle(usage: TokenUsage) -> tuple[Decimal, BudgetStatus | None]:
             """Step 4 and 5: price, record and settle in one transaction, then read the
             budget state after this call so clients see where they stand now."""
+            project_reserved = (
+                decision.project_reserved_usd if decision.project_budget is not None else None
+            )
             cost = book.cost(
                 req.model, usage.input_tokens, usage.output_tokens, usage.cached_input_tokens
             )
@@ -402,6 +383,7 @@ def create_app(
                     key_id=attr.key_id,
                 ),
                 release_reserved=decision.reserved_usd,
+                project_reserved=project_reserved,
             )
             metrics.observe_cost(
                 attr.team, attr.project, req.model, cost, usage.input_tokens, usage.output_tokens
@@ -419,9 +401,16 @@ def create_app(
                 metrics.budget_used.labels(attr.team).set(float(status.used_pct) / 100)
             return cost, status
 
-        def on_upstream_failure(exc: BaseException) -> str:
+        def release_reservations() -> None:
             if decision.reserved_usd:
                 ledger.release(attr.team, decision.reserved_usd)
+            if decision.project_reserved_usd:
+                ledger.release(
+                    project_scope(attr.team, attr.project), decision.project_reserved_usd
+                )
+
+        def on_upstream_failure(exc: BaseException) -> str:
+            release_reservations()
             throttled = isinstance(exc, ProviderError) and exc.status_code == 429
             outcome = "upstream_rate_limited" if throttled else "upstream_error"
             metrics.requests.labels(attr.team, req.model, outcome).inc()
@@ -441,6 +430,9 @@ def create_app(
                 policy=PolicyEnvelope(
                     version=engine.version,
                     budget=_budget_envelope(status),
+                    project_budget=_budget_envelope(
+                        engine.project_budget_status(attr.team, attr.project)
+                    ),
                     warnings=decision.warnings,
                 ),
             )
@@ -529,8 +521,8 @@ def create_app(
                     yield _SSE_DONE
                     return
                 finally:
-                    if not settled and decision.reserved_usd:  # client went away mid-stream
-                        ledger.release(attr.team, decision.reserved_usd)
+                    if not settled:  # client went away mid-stream
+                        release_reservations()
                 yield _sse(_stream_chunk(request_id, created, req.model, None, finish))
                 final: dict[str, Any] = {
                     "id": request_id,
@@ -571,10 +563,14 @@ def create_app(
                 reasoning_tokens=result.reasoning_tokens,
             )
         )
-        _budget_headers(response, status, decision.warnings)
-        response.headers["X-FinOps-Cost-USD"] = money(cost)
-        response.headers["X-FinOps-Currency"] = book.currency
-        response.headers["X-FinOps-Request-Id"] = request_id
+        response.headers.update(
+            budget_headers(
+                status,
+                decision.warnings,
+                engine.project_budget_status(attr.team, attr.project),
+            )
+        )
+        response.headers.update(cost_headers(request_id, cost, book.currency))
 
         return ChatResponse(
             id=request_id,

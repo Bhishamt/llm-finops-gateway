@@ -69,6 +69,27 @@ class RateLimitPolicy(BaseModel):
     requests_per_minute: int = Field(gt=0)
 
 
+class ProjectPolicy(BaseModel):
+    """A registered project of a team (ADR-0021). Everything is optional: an empty mapping
+    registers the name and inherits the team's models and budget."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    allowed_models: list[str] | None = None
+    budget: BudgetPolicy | None = None
+    use_cases: list[str] | None = None
+
+    def allows_model(self, model: str) -> bool:
+        return (
+            self.allowed_models is None
+            or "*" in self.allowed_models
+            or model in self.allowed_models
+        )
+
+    def allows_use_case(self, use_case: str) -> bool:
+        return self.use_cases is None or use_case in self.use_cases
+
+
 class TeamPolicy(BaseModel):
     """Partial policy; ``None`` means 'inherit from defaults'."""
 
@@ -77,6 +98,7 @@ class TeamPolicy(BaseModel):
     allowed_models: list[str] | None = None
     budget: BudgetPolicy | None = None
     rate_limit: RateLimitPolicy | None = None
+    projects: dict[str, ProjectPolicy] | None = None
 
 
 class EffectivePolicy(BaseModel):
@@ -88,9 +110,17 @@ class EffectivePolicy(BaseModel):
     allowed_models: list[str]
     budget: BudgetPolicy | None
     rate_limit: RateLimitPolicy | None
+    projects: dict[str, ProjectPolicy] | None = None
 
     def allows_model(self, model: str) -> bool:
         return "*" in self.allowed_models or model in self.allowed_models
+
+    def project(self, name: str) -> ProjectPolicy | None:
+        """The registered project, or ``None`` when the team keeps a registry and the name is
+        not in it. A team without a registry accepts any project and returns an empty policy."""
+        if self.projects is None:
+            return ProjectPolicy()
+        return self.projects.get(name)
 
 
 @dataclass(frozen=True)
@@ -128,6 +158,8 @@ class PolicyDecision:
     budget: BudgetStatus | None = None
     reserved_usd: Decimal = Decimal(0)
     retry_after_seconds: int | None = None
+    project_budget: BudgetStatus | None = None
+    project_reserved_usd: Decimal = Decimal(0)
 
 
 class PolicySet:
@@ -154,6 +186,8 @@ class PolicySet:
             }
         except ValueError as exc:
             raise PolicyError(f"{path}: {exc}") from exc
+        if defaults.projects is not None:
+            raise PolicyError(f"{path}: 'projects' is declared per team, not under defaults")
         return cls(defaults, teams, version=str(raw.get("version", "unversioned")))
 
     def teams(self) -> list[str]:
@@ -169,8 +203,17 @@ class PolicySet:
         budget = override.budget if override.budget is not None else self._defaults.budget
         rate = override.rate_limit if override.rate_limit is not None else self._defaults.rate_limit
         return EffectivePolicy(
-            team=team, allowed_models=list(allowed), budget=budget, rate_limit=rate
+            team=team,
+            allowed_models=list(allowed),
+            budget=budget,
+            rate_limit=rate,
+            projects=override.projects,
         )
+
+
+def project_scope(team: str, project: str) -> str:
+    """Counter key of a project budget (ADR-0021): the team's counter is keyed by the team."""
+    return f"{team}/{project}"
 
 
 def month_start(now: datetime | None = None) -> datetime:
@@ -259,6 +302,13 @@ class PolicyEngine:
         c = self._ledger.counter(team)
         return _status(policy.budget, c.spent_usd, c.reserved_usd)
 
+    def project_budget_status(self, team: str, project: str) -> BudgetStatus | None:
+        proj = self._policies.resolve(team).project(project)
+        if proj is None or proj.budget is None:
+            return None
+        c = self._ledger.counter(project_scope(team, project))
+        return _status(proj.budget, c.spent_usd, c.reserved_usd)
+
     def check(self, attr: Attribution, model: str, estimate: Decimal) -> PolicyDecision:
         """Pre-call evaluation: allow-list, rate limit, then budget reservation.
 
@@ -268,11 +318,50 @@ class PolicyEngine:
         """
         policy = self._policies.resolve(attr.team)
 
-        if not policy.allows_model(model):
-            msg = (
-                f"model '{model}' is not allowed for team '{attr.team}' "
-                f"(allowed: {', '.join(policy.allowed_models)})"
+        proj = policy.project(attr.project)
+        if proj is None:
+            registered = ", ".join(sorted(policy.projects or {})) or "none"
+            log.warning(
+                "policy block team=%s project=%s reason=project_not_registered",
+                attr.team,
+                attr.project,
             )
+            return PolicyDecision(
+                allowed=False,
+                violation="project_not_registered",
+                message=(
+                    f"project '{attr.project}' is not registered for team '{attr.team}' "
+                    f"(registered: {registered}); add it to policies.yaml"
+                ),
+            )
+        if not proj.allows_use_case(attr.use_case):
+            log.warning(
+                "policy block team=%s project=%s use_case=%s reason=use_case_not_registered",
+                attr.team,
+                attr.project,
+                attr.use_case,
+            )
+            return PolicyDecision(
+                allowed=False,
+                violation="use_case_not_registered",
+                message=(
+                    f"use case '{attr.use_case}' is not registered for project "
+                    f"'{attr.project}' (registered: {', '.join(proj.use_cases or [])})"
+                ),
+            )
+
+        if not policy.allows_model(model) or not proj.allows_model(model):
+            allowed = (
+                proj.allowed_models
+                if proj.allowed_models is not None and policy.allows_model(model)
+                else policy.allowed_models
+            )
+            scope = (
+                f"project '{attr.project}'"
+                if proj.allowed_models is not None and policy.allows_model(model)
+                else f"team '{attr.team}'"
+            )
+            msg = f"model '{model}' is not allowed for {scope} (allowed: {', '.join(allowed)})"
             log.warning(
                 "policy block team=%s project=%s model=%s reason=model_not_allowed",
                 attr.team,
@@ -301,41 +390,85 @@ class PolicyEngine:
                 )
 
         budget = policy.budget
-        if budget is None:
+        project_budget = proj.budget
+        if budget is None and project_budget is None:
             return PolicyDecision(allowed=True)
 
+        warnings: list[str] = []
+        status: BudgetStatus | None = None
+        reserved_team = Decimal(0)
+        if budget is not None:
+            who = f"team '{attr.team}'"
+            ok, status, warning = self._reserve(attr.team, budget, estimate, who, attr)
+            if not ok:
+                return PolicyDecision(
+                    allowed=False, violation="budget_exceeded", message=warning, budget=status
+                )
+            if warning:
+                warnings.append(warning)
+            reserved_team = estimate
+
+        project_status: BudgetStatus | None = None
+        reserved_project = Decimal(0)
+        if project_budget is not None:
+            who = f"project '{attr.project}' of team '{attr.team}'"
+            scope = project_scope(attr.team, attr.project)
+            ok, project_status, warning = self._reserve(scope, project_budget, estimate, who, attr)
+            if not ok:
+                if reserved_team:
+                    self._ledger.release(attr.team, reserved_team)
+                return PolicyDecision(
+                    allowed=False,
+                    violation="budget_exceeded",
+                    message=warning,
+                    budget=status,
+                    project_budget=project_status,
+                )
+            if warning:
+                warnings.append(warning)
+            reserved_project = estimate
+
+        return PolicyDecision(
+            allowed=True,
+            warnings=warnings,
+            budget=status,
+            reserved_usd=reserved_team,
+            project_budget=project_status,
+            project_reserved_usd=reserved_project,
+        )
+
+    def _reserve(
+        self, scope: str, budget: BudgetPolicy, estimate: Decimal, who: str, attr: Attribution
+    ) -> tuple[bool, BudgetStatus, str | None]:
+        """Reserve ``estimate`` on one budget scope. Returns (reserved, status, message):
+        on failure the message explains the block, on success it is the warning or ``None``."""
         limit_for_block = (
             budget.monthly_usd * Decimal(str(budget.block_at))
             if budget.enforcement == "block"
             else None
         )
-        before = self._ledger.counter(attr.team)
+        before = self._ledger.counter(scope)
         exhausted = limit_for_block is not None and before.committed_usd >= limit_for_block
-        reserved = (
-            False if exhausted else self._ledger.reserve(attr.team, estimate, limit_for_block)
-        )
-        c = self._ledger.counter(attr.team)
+        reserved = False if exhausted else self._ledger.reserve(scope, estimate, limit_for_block)
+        c = self._ledger.counter(scope)
         status = _status(budget, c.spent_usd, c.reserved_usd)
         budget_msg = (
-            f"team '{attr.team}' has used {status.used_pct}% of its monthly budget "
+            f"{who} has used {status.used_pct}% of its monthly budget "
             f"({money(status.spent_usd)} spent + {money(status.reserved_usd)} in flight of "
             f"{money(status.limit_usd)} USD)"
         )
         if not reserved:
             log.warning(
-                "policy block team=%s project=%s reason=budget_exceeded used_pct=%s estimate=%s",
+                "policy block team=%s project=%s reason=budget_exceeded scope=%s used_pct=%s "
+                "estimate=%s",
                 attr.team,
                 attr.project,
+                scope,
                 status.used_pct,
                 estimate,
             )
             blocked = _status(budget, c.spent_usd, c.reserved_usd, force_block=True)
-            return PolicyDecision(
-                allowed=False,
-                violation="budget_exceeded",
-                message=f"{budget_msg}; this call was estimated at {money(estimate)} USD",
-                budget=blocked,
-            )
+            return False, blocked, f"{budget_msg}; this call was estimated at {money(estimate)} USD"
         if status.level in ("warn", "block"):
             level_note = (
                 f"calls will be blocked at {status.block_at_pct}%"
@@ -343,18 +476,14 @@ class PolicyEngine:
                 else "enforcement is warn-only"
             )
             log.warning(
-                "policy warn team=%s project=%s used_pct=%s",
+                "policy warn team=%s project=%s scope=%s used_pct=%s",
                 attr.team,
                 attr.project,
+                scope,
                 status.used_pct,
             )
-            return PolicyDecision(
-                allowed=True,
-                warnings=[f"{budget_msg}; {level_note}"],
-                budget=status,
-                reserved_usd=estimate,
-            )
-        return PolicyDecision(allowed=True, budget=status, reserved_usd=estimate)
+            return True, status, f"{budget_msg}; {level_note}"
+        return True, status, None
 
 
 def _status(

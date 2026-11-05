@@ -132,8 +132,15 @@ class Ledger:
 
     # ---- writes ------------------------------------------------------------------------
 
-    def record(self, entry: CostEntry, release_reserved: Decimal = ZERO) -> None:
-        """Insert the ledger row and settle the counter in one transaction."""
+    def record(
+        self,
+        entry: CostEntry,
+        release_reserved: Decimal = ZERO,
+        *,
+        project_reserved: Decimal | None = None,
+    ) -> None:
+        """Insert the ledger row and settle the counters in one transaction: the team's
+        always, the project's (scope ``team/project``) when ``project_reserved`` is given."""
         ts = entry.ts or datetime.now(UTC)
         month = month_key(ts)
         with Session(self._engine) as session:
@@ -154,20 +161,25 @@ class Ledger:
                     price_book_version=entry.price_book_version,
                 )
             )
-            self._ensure_counter(session, entry.team, month)
-            session.execute(
-                update(BudgetCounter)
-                .where(BudgetCounter.team == entry.team, BudgetCounter.month == month)
-                .values(
-                    spent_usd=BudgetCounter.spent_usd + entry.cost_usd,
-                    reserved_usd=_floor_zero(BudgetCounter.reserved_usd - release_reserved),
+            scopes = [(entry.team, release_reserved)]
+            if project_reserved is not None:
+                scopes.append((f"{entry.team}/{entry.project}", project_reserved))
+            for scope, release in scopes:
+                self._ensure_counter(session, scope, month)
+                session.execute(
+                    update(BudgetCounter)
+                    .where(BudgetCounter.team == scope, BudgetCounter.month == month)
+                    .values(
+                        spent_usd=BudgetCounter.spent_usd + entry.cost_usd,
+                        reserved_usd=_floor_zero(BudgetCounter.reserved_usd - release),
+                    )
                 )
-            )
             session.commit()
 
     def reserve(self, team: str, amount: Decimal, limit: Decimal | None) -> bool:
-        """Atomically add ``amount`` to the team's reservation if the result stays within
-        ``limit`` (``None`` = unlimited). Returns False, and reserves nothing, otherwise."""
+        """Atomically add ``amount`` to a scope's reservation if the result stays within
+        ``limit`` (``None`` = unlimited). Returns False, and reserves nothing, otherwise.
+        The scope is the team name, or ``team/project`` for a project budget (ADR-0021)."""
         month = month_key()
         with Session(self._engine) as session:
             self._ensure_counter(session, team, month)
