@@ -141,6 +141,7 @@ class BudgetEnvelope(BaseModel):
 class PolicyEnvelope(BaseModel):
     version: str
     budget: BudgetEnvelope | None = None
+    project_budget: BudgetEnvelope | None = None
     warnings: list[str] = Field(default_factory=list)
 
 

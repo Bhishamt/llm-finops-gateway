@@ -366,3 +366,154 @@ def test_estimate_counts_content_parts_tool_calls_and_tool_definitions() -> None
     with_tools, out = estimate_tokens(messages, None, 10, extra_chars=400)
     assert plain >= 40 // 4 + 16
     assert with_tools == plain + 100 and out == 10
+
+
+# ---- project registry and project budgets (ADR-0021) ------------------------------------
+
+REGISTRY_YAML = """\
+version: registry
+defaults:
+  allowed_models: ["*"]
+teams:
+  product:
+    budget: {monthly_usd: 1, warn_at: 0.5, block_at: 1.0}
+    projects:
+      chat-assistant:
+        budget: {monthly_usd: 0.02, warn_at: 0.5, block_at: 1.0}
+        use_cases: ["faq", "summaries"]
+      internal-tools: {}
+      narrow:
+        allowed_models: ["free"]
+  open:
+    budget: {monthly_usd: 1}
+"""
+
+
+@pytest.fixture
+def registry(tmp_path: Path, ledger: Ledger) -> PolicyEngine:
+    path = tmp_path / "registry.yaml"
+    path.write_text(REGISTRY_YAML)
+    return PolicyEngine(PolicySet.from_yaml(path), ledger)
+
+
+def _attr(project: str, use_case: str = "faq", team: str = "product") -> Attribution:
+    return Attribution(team=team, project=project, use_case=use_case)
+
+
+def test_projects_under_defaults_are_rejected(tmp_path: Path) -> None:
+    path = tmp_path / "bad.yaml"
+    path.write_text("defaults:\n  projects:\n    x: {}\n")
+    with pytest.raises(PolicyError, match="per team"):
+        PolicySet.from_yaml(path)
+
+
+def test_unregistered_project_is_blocked_before_the_call(registry: PolicyEngine) -> None:
+    d = registry.check(_attr("pilot-7"), "priced", EST)
+    assert not d.allowed and d.violation == "project_not_registered"
+    assert "chat-assistant, internal-tools, narrow" in (d.message or "")
+
+
+def test_team_without_registry_accepts_any_project(registry: PolicyEngine) -> None:
+    assert registry.check(_attr("anything", team="open"), "priced", EST).allowed
+
+
+def test_registered_project_without_options_inherits_the_team(registry: PolicyEngine) -> None:
+    d = registry.check(_attr("internal-tools", use_case="whatever"), "priced", EST)
+    assert d.allowed and d.project_budget is None and d.budget is not None
+
+
+def test_use_case_outside_the_list_is_blocked(registry: PolicyEngine) -> None:
+    d = registry.check(_attr("chat-assistant", use_case="unspecified"), "priced", EST)
+    assert not d.allowed and d.violation == "use_case_not_registered"
+    assert "faq, summaries" in (d.message or "")
+
+
+def test_project_model_list_narrows_the_team_list(registry: PolicyEngine) -> None:
+    d = registry.check(_attr("narrow"), "priced", EST)
+    assert not d.allowed and d.violation == "model_not_allowed"
+    assert "project 'narrow'" in (d.message or "")
+    assert registry.check(_attr("narrow"), "free", EST).allowed
+
+
+def test_project_budget_is_reserved_and_settled_next_to_the_team(
+    registry: PolicyEngine, ledger: Ledger
+) -> None:
+    d = registry.check(_attr("chat-assistant"), "priced", EST)
+    assert d.allowed and d.project_budget is not None
+    assert d.reserved_usd == EST and d.project_reserved_usd == EST
+    assert ledger.counter("product").reserved_usd == EST
+    assert ledger.counter("product/chat-assistant").reserved_usd == EST
+    assert d.project_budget.used_pct == Decimal("50.0") and d.project_budget.level == "warn"
+    assert d.warnings and d.warnings[0].startswith("project 'chat-assistant' of team 'product'")
+
+    entry = CostEntry(
+        request_id="r1",
+        team="product",
+        project="chat-assistant",
+        use_case="faq",
+        provider="fake",
+        model="priced",
+        input_tokens=1,
+        output_tokens=1,
+        cost_usd=Decimal("0.005"),
+        price_book_version="v",
+    )
+    ledger.record(entry, release_reserved=d.reserved_usd, project_reserved=d.project_reserved_usd)
+    team, proj = ledger.counter("product"), ledger.counter("product/chat-assistant")
+    assert team.reserved_usd == 0 and team.spent_usd == Decimal("0.005")
+    assert proj.reserved_usd == 0 and proj.spent_usd == Decimal("0.005")
+    status = registry.project_budget_status("product", "chat-assistant")
+    assert status is not None and status.used_pct == Decimal("25.0")
+    assert registry.project_budget_status("product", "internal-tools") is None
+
+
+def test_project_budget_blocks_and_releases_the_team_reservation(
+    registry: PolicyEngine, ledger: Ledger
+) -> None:
+    ledger.reserve("product/chat-assistant", Decimal("0.015"), None)  # 75% in flight already
+    d = registry.check(_attr("chat-assistant"), "priced", EST)  # EST 0.01 would exceed 0.02
+    assert not d.allowed and d.violation == "budget_exceeded"
+    assert d.project_budget is not None and d.project_budget.level == "block"
+    assert d.budget is not None and d.budget.level == "ok"
+    assert "project 'chat-assistant'" in (d.message or "")
+    assert ledger.counter("product").reserved_usd == 0  # the team's reservation was given back
+
+
+def test_http_project_budget_in_headers_and_body(
+    tmp_path: Path,
+    price_book: PriceBook,
+    pricing_path: Path,
+    ledger: Ledger,
+    fake_provider: FakeProvider,
+) -> None:
+    path = tmp_path / "registry.yaml"
+    path.write_text(REGISTRY_YAML)
+    settings = Settings(
+        provider=ProviderKind.OLLAMA,
+        auth_mode="headers",
+        pricing_path=pricing_path,
+        database_url="sqlite:///:memory:",
+    )
+    app = create_app(
+        settings,
+        price_book=price_book,
+        policies=PolicySet.from_yaml(path),
+        keyring=KeyRing.empty(),
+        ledger=ledger,
+        provider=fake_provider,
+    )
+    with TestClient(app) as c:
+        hdr = {"X-Team": "product", "X-Project": "chat-assistant", "X-Use-Case": "faq"}
+        r = c.post("/v1/chat/completions", json=BODY, headers=hdr)
+        assert r.status_code == 200
+        assert r.headers["X-FinOps-Project-Budget-Limit-USD"] == "0.02"
+        assert r.headers["X-FinOps-Project-Budget-Status"] == "ok"
+        body = r.json()["x_finops"]["policy"]
+        assert body["project_budget"]["limit_usd"] == "0.02"
+        assert body["budget"]["limit_usd"] == "1"
+        assert ledger.counter("product/chat-assistant").reserved_usd == 0
+
+        r = c.post("/v1/chat/completions", json=BODY, headers={**hdr, "X-Project": "pilot-7"})
+        assert r.status_code == 403
+        assert r.json()["detail"]["error"] == "project_not_registered"
+        assert len(fake_provider.calls) == 1
