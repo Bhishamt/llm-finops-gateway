@@ -288,6 +288,10 @@ class PolicyEngine:
         self._ledger = ledger
         self._window = _SlidingWindow()
 
+    def replace(self, policies: PolicySet) -> None:
+        """Swap the policy set in place (hot reload); the ledger and rate windows stay."""
+        self._policies = policies
+
     @property
     def version(self) -> str:
         return self._policies.version

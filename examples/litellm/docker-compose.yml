@@ -42,13 +42,16 @@ services:
       AZURE_API_BASE: ${LFG_AZURE_OPENAI_ENDPOINT}
       AZURE_API_KEY: ${LFG_AZURE_OPENAI_API_KEY}
       AZURE_API_VERSION: ${LFG_AZURE_OPENAI_API_VERSION:-2024-10-21}
-      LFG_PRICING_PATH: /app/finops/pricing.yaml
-      LFG_POLICIES_PATH: /app/finops/policies.yaml
+      LFG_PRICING_PATH: /app/finops-config/pricing.yaml
+      LFG_POLICIES_PATH: /app/finops-example/policies.yaml
       LFG_DATABASE_URL: sqlite:////data/finops.db
     volumes:
       - ./config.plugin.yaml:/app/config.yaml:ro
-      - ../../config/pricing.yaml:/app/finops/pricing.yaml:ro
-      - ./policies.yaml:/app/finops/policies.yaml:ro
+      # Directories, not single files: editors and sed replace files by rename, and a bind
+      # mount of one file would keep serving the old inode. Directory mounts see the edit, and
+      # the plugin reloads the price book and the policies without a restart.
+      - ../../config:/app/finops-config:ro
+      - .:/app/finops-example:ro
       - finops-ledger:/data
     command: ["--config", "/app/config.yaml", "--port", "4000"]
   # The gateway's report page over the plugin's ledger: http://localhost:8081/finops
@@ -59,12 +62,12 @@ services:
     ports: ["8081:8080"]
     environment:
       LFG_AUTH_MODE: headers
-      LFG_PRICING_PATH: /app/finops/pricing.yaml
-      LFG_POLICIES_PATH: /app/finops/policies.yaml
+      LFG_PRICING_PATH: /app/finops-config/pricing.yaml
+      LFG_POLICIES_PATH: /app/finops-example/policies.yaml
       LFG_DATABASE_URL: sqlite:////data/finops.db
     volumes:
-      - ../../config/pricing.yaml:/app/finops/pricing.yaml:ro
-      - ./policies.yaml:/app/finops/policies.yaml:ro
+      - ../../config:/app/finops-config:ro
+      - .:/app/finops-example:ro
       - finops-ledger:/data
   litellm-db:
     image: postgres:16-alpine

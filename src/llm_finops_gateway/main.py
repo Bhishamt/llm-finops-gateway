@@ -60,6 +60,7 @@ from .providers.azure_openai import AzureOpenAIProvider
 from .providers.base import TokenUsage
 from .providers.ollama import OllamaProvider
 from .providers.openai_compat import OpenAICompatProvider
+from .reload import WatchedFile
 from .report import (
     COOKIE,
     PolicyRow,
@@ -164,7 +165,22 @@ def load_keyring(settings: Settings) -> KeyRing:
 
 
 def _state(request: Request) -> Any:
-    return request.app.state
+    """The application state, with the price book and policies reloaded first when their
+    files changed on disk (only when they were loaded from files, not injected)."""
+    st = request.app.state
+    book_watch: WatchedFile[PriceBook] | None = getattr(st, "book_watch", None)
+    if book_watch is not None:
+        book = book_watch.get()
+        if book is not st.price_book:
+            st.price_book = book
+            st.routes = route_models(book, st.providers, st.provider)
+    policy_watch: WatchedFile[PolicySet] | None = getattr(st, "policy_watch", None)
+    if policy_watch is not None:
+        policies = policy_watch.get()
+        if policies is not st.policies:
+            st.policies = policies
+            st.policy_engine.replace(policies)
+    return st
 
 
 def _budget_envelope(status: BudgetStatus | None) -> BudgetEnvelope | None:
@@ -214,8 +230,21 @@ def create_app(
     """``provider`` is the default provider; ``providers`` adds further ones by name. With
     neither, every provider the settings describe is built and ``LFG_PROVIDER`` is the default."""
     settings = settings or Settings()
-    price_book = price_book or PriceBook.from_yaml(settings.pricing_path)
-    policies = policies or load_policies(settings)
+    book_watch: WatchedFile[PriceBook] | None = None
+    policy_watch: WatchedFile[PolicySet] | None = None
+    if price_book is None:
+        book_watch = WatchedFile(
+            settings.pricing_path, PriceBook.from_yaml, lambda b: f"version {b.version}"
+        )
+        price_book = book_watch.value
+    if policies is None:
+        if settings.policies_path.exists():
+            policy_watch = WatchedFile(
+                settings.policies_path, PolicySet.from_yaml, lambda p: f"version {p.version}"
+            )
+            policies = policy_watch.value
+        else:
+            policies = load_policies(settings)
     keyring = keyring or load_keyring(settings)
     ledger = ledger or Ledger(settings.database_url)
     providers = dict(providers or {})
@@ -246,6 +275,8 @@ def create_app(
         app.state.price_book = price_book
         app.state.policies = policies
         app.state.policy_engine = engine
+        app.state.book_watch = book_watch
+        app.state.policy_watch = policy_watch
         app.state.keyring = keyring
         app.state.ledger = ledger
         app.state.provider = default_provider
