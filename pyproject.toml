@@ -41,6 +41,7 @@ dev = [
 demo = ["matplotlib>=3.8"]
 azure = ["azure-identity>=1.19"]
 postgres = ["psycopg[binary]>=3.2"]
+litellm = ["litellm>=1.108,<1.109"]
 otel = [
   "opentelemetry-api>=1.25",
   "opentelemetry-sdk>=1.25",
@@ -85,6 +86,15 @@ disallow_untyped_decorators = false
 [[tool.mypy.overrides]]
 module = ["opentelemetry.*"]
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["litellm.*"]
+ignore_missing_imports = true
+
+# CustomLogger is untyped without the [litellm] extra; subclassing it is the point of the module.
+[[tool.mypy.overrides]]
+module = "llm_finops_gateway.litellm_plugin"
+disallow_subclassing_any = false
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

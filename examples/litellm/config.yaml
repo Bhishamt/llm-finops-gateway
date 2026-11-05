@@ -1,0 +1,32 @@
+# LiteLLM proxy config for the FinOps plugin spike: the two Azure OpenAI deployments the gateway
+# already uses, plus the same deployment under a name the gateway's price book does not know.
+model_list:
+  - model_name: gpt-4.1-mini
+    litellm_params:
+      model: azure/gpt-4.1-mini-dev
+      api_base: os.environ/AZURE_API_BASE
+      api_key: os.environ/AZURE_API_KEY
+      api_version: os.environ/AZURE_API_VERSION
+  - model_name: gpt-5-mini
+    litellm_params:
+      model: azure/gpt-5-mini-dev
+      api_base: os.environ/AZURE_API_BASE
+      api_key: os.environ/AZURE_API_KEY
+      api_version: os.environ/AZURE_API_VERSION
+  # Shows what LiteLLM does with an unpriced model before the plugin: cost 0, budget check skipped.
+  - model_name: mystery-model
+    litellm_params:
+      model: azure/gpt-4.1-mini-dev
+      api_base: os.environ/AZURE_API_BASE
+      api_key: os.environ/AZURE_API_KEY
+      api_version: os.environ/AZURE_API_VERSION
+    model_info:
+      input_cost_per_token: 0
+      output_cost_per_token: 0
+
+litellm_settings:
+  callbacks: spike_probe.probe
+  drop_params: true
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY

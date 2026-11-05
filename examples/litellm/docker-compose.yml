@@ -1,0 +1,77 @@
+# LiteLLM proxy with a PostgreSQL store, for developing and testing the FinOps plugin (ADR-0019).
+#
+#   cd examples/litellm
+#   docker compose --env-file ../../.env up -d
+#   open http://localhost:4000/ui          (login: admin / the LITELLM_MASTER_KEY below)
+#
+# Models are the Azure OpenAI deployments the gateway already uses; the endpoint, key and API
+# version come from the repository's .env (LFG_AZURE_OPENAI_*).
+#
+# Two proxies, same models, same keys database, plus the report page:
+#   litellm         port 4000, the probe callback only (prints what each hook sees)
+#   litellm-finops  port 4001, the FinOps plugin: price book, policies and a ledger of its own
+#   finops-report   port 8081, the gateway's /finops page and summary APIs over that ledger
+services:
+  litellm:
+    # LiteLLM 1.108.0 (main-stable on 2026-11-05), pinned by digest so the hooks tested here do not move.
+    image: ${LITELLM_IMAGE:-ghcr.io/berriai/litellm@sha256:c560d317136880ea92d62334d4367ab10955b1af189dd3ea24f6551290b1d6c1}
+    ports: ["4000:4000"]
+    depends_on: [litellm-db]
+    environment:
+      DATABASE_URL: postgresql://litellm:litellm@litellm-db:5432/litellm
+      LITELLM_MASTER_KEY: sk-lfg-master-local-only
+      LITELLM_SALT_KEY: sk-lfg-salt-local-only
+      AZURE_API_BASE: ${LFG_AZURE_OPENAI_ENDPOINT}
+      AZURE_API_KEY: ${LFG_AZURE_OPENAI_API_KEY}
+      AZURE_API_VERSION: ${LFG_AZURE_OPENAI_API_VERSION:-2024-10-21}
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - ./spike_probe.py:/app/spike_probe.py:ro
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+  litellm-finops:
+    build:
+      context: ../..
+      dockerfile: examples/litellm/Dockerfile
+    image: litellm-finops:dev
+    ports: ["4001:4000"]
+    depends_on: [litellm-db]
+    environment:
+      DATABASE_URL: postgresql://litellm:litellm@litellm-db:5432/litellm
+      LITELLM_MASTER_KEY: sk-lfg-master-local-only
+      LITELLM_SALT_KEY: sk-lfg-salt-local-only
+      AZURE_API_BASE: ${LFG_AZURE_OPENAI_ENDPOINT}
+      AZURE_API_KEY: ${LFG_AZURE_OPENAI_API_KEY}
+      AZURE_API_VERSION: ${LFG_AZURE_OPENAI_API_VERSION:-2024-10-21}
+      LFG_PRICING_PATH: /app/finops/pricing.yaml
+      LFG_POLICIES_PATH: /app/finops/policies.yaml
+      LFG_DATABASE_URL: sqlite:////data/finops.db
+    volumes:
+      - ./config.plugin.yaml:/app/config.yaml:ro
+      - ../../config/pricing.yaml:/app/finops/pricing.yaml:ro
+      - ./policies.yaml:/app/finops/policies.yaml:ro
+      - finops-ledger:/data
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+  # The gateway's report page over the plugin's ledger: http://localhost:8081/finops
+  finops-report:
+    build:
+      context: ../..
+    image: llm-finops-gateway:dev
+    ports: ["8081:8080"]
+    environment:
+      LFG_AUTH_MODE: headers
+      LFG_PRICING_PATH: /app/finops/pricing.yaml
+      LFG_POLICIES_PATH: /app/finops/policies.yaml
+      LFG_DATABASE_URL: sqlite:////data/finops.db
+    volumes:
+      - ../../config/pricing.yaml:/app/finops/pricing.yaml:ro
+      - ./policies.yaml:/app/finops/policies.yaml:ro
+      - finops-ledger:/data
+  litellm-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: litellm
+      POSTGRES_PASSWORD: litellm
+      POSTGRES_DB: litellm
+
+volumes:
+  finops-ledger:

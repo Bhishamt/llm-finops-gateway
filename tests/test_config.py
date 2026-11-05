@@ -17,7 +17,10 @@ def test_defaults_to_ollama(monkeypatch: pytest.MonkeyPatch) -> None:
     assert isinstance(build_provider(settings), OllamaProvider)
 
 
-def test_azure_requires_endpoint_and_key() -> None:
+def test_azure_requires_endpoint_and_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    # importing litellm loads the repository's .env into the process; keep this test clean
+    for name in ("LFG_AZURE_OPENAI_ENDPOINT", "LFG_AZURE_OPENAI_API_KEY"):
+        monkeypatch.delenv(name, raising=False)
     with pytest.raises(ValidationError) as exc:
         Settings(provider=ProviderKind.AZURE_OPENAI, _env_file=None)  # type: ignore[call-arg]
     assert "LFG_AZURE_OPENAI_ENDPOINT" in str(exc.value)
