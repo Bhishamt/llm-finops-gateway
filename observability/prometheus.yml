@@ -6,3 +6,13 @@ scrape_configs:
     metrics_path: /metrics
     static_configs:
       - targets: ["host.docker.internal:8080"]
+
+  # A LiteLLM proxy with the FinOps plugin (examples/litellm, port 4001): LiteLLM serves its own
+  # litellm_* series and the plugin's lfg_* series on /metrics/ (trailing slash), behind the
+  # proxy's master key. The dashboard works unchanged because the series names are the same.
+  - job_name: litellm-finops
+    metrics_path: /metrics/
+    authorization:
+      credentials: sk-lfg-master-local-only
+    static_configs:
+      - targets: ["host.docker.internal:4001"]

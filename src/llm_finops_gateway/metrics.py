@@ -1,4 +1,6 @@
-"""Prometheus metrics. One registry per app instance so tests can create many apps."""
+"""Prometheus metrics. One registry per app instance so tests can create many apps; the
+LiteLLM plugin passes the process-wide default registry so that LiteLLM's own /metrics
+endpoint serves the same ``lfg_*`` series the gateway exposes."""
 
 from __future__ import annotations
 
@@ -10,8 +12,8 @@ CONTENT_TYPE = "text/plain; version=0.0.4; charset=utf-8"
 
 
 class Metrics:
-    def __init__(self) -> None:
-        self.registry = CollectorRegistry()
+    def __init__(self, registry: CollectorRegistry | None = None) -> None:
+        self.registry = registry if registry is not None else CollectorRegistry()
         self.requests = Counter(
             "lfg_requests_total",
             "Chat completion requests by outcome",
