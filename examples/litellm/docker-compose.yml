@@ -66,6 +66,9 @@ services:
       LFG_PRICING_PATH: /app/finops-config/pricing.yaml
       LFG_POLICIES_PATH: /app/finops-example/policies.yaml
       LFG_DATABASE_URL: sqlite:////data/finops.db
+      # the report as a LiteLLM dashboard plugin (ADR-0024): same salt key as the proxy
+      LFG_LITELLM_PLUGIN_NAME: finops
+      LFG_LITELLM_SALT_KEY: sk-lfg-salt-local-only
     volumes:
       - ../../config:/app/finops-config:ro
       - .:/app/finops-example:ro

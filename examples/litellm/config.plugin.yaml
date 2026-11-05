@@ -28,3 +28,9 @@ litellm_settings:
 
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY
+  # The report page inside the dashboard (ADR-0024): the url is what the browser reaches the
+  # finops-report service at. Sign in to the UI, then pick "FinOps" in the mode switcher.
+  plugins:
+    - name: finops
+      display_name: FinOps
+      url: http://localhost:8081

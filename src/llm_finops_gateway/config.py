@@ -130,6 +130,14 @@ class Settings(BaseSettings):
     )
     otel_service_name: str = "llm-finops-gateway"
 
+    # The report page as a LiteLLM dashboard plugin (ADR-0024); both must be set to enable it.
+    litellm_plugin_name: str | None = Field(
+        default=None, description="Plugin name registered under general_settings.plugins in LiteLLM"
+    )
+    litellm_salt_key: SecretStr | None = Field(
+        default=None, description="LiteLLM's LITELLM_SALT_KEY, used to derive this plugin's key"
+    )
+
     @model_validator(mode="after")
     def _azure_requires_credentials(self) -> Settings:
         if self.provider is ProviderKind.AZURE_OPENAI:

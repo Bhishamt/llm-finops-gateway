@@ -62,7 +62,8 @@ register `llm_finops_gateway.litellm_plugin.plugin` under `litellm_settings.call
 `LFG_PRICING_PATH`, `LFG_POLICIES_PATH` and `LFG_DATABASE_URL` at your files, and every chat call
 through LiteLLM gets mandatory project attribution, fail-closed pricing, budgets with warn and
 block, the `X-FinOps-*` headers, a ledger row and the gateway's Prometheus metrics on LiteLLM's
-own `/metrics/` endpoint, so the Grafana dashboard works unchanged. Guide: [docs/litellm.md](docs/litellm.md),
+own `/metrics/` endpoint, so the Grafana dashboard works unchanged. The report page can sit
+inside the LiteLLM dashboard as a plugin (ADR-0024). Guide: [docs/litellm.md](docs/litellm.md),
 example stack: [examples/litellm/](examples/litellm/).
 
 ## Try it from a browser

@@ -109,13 +109,42 @@ Enable LiteLLM's own `prometheus` callback in `litellm_settings.callbacks` next 
 (as `config.plugin.yaml` does) so that the endpoint exists; the plugin's series are served
 there regardless of which callbacks are on.
 
+## The report page inside the LiteLLM dashboard
+
+The gateway's report page can be a LiteLLM dashboard plugin (ADR-0024): the dashboard shows
+"FinOps" in its mode switcher, loads the report in a frame and signs the viewer in with the
+identity it holds, so admins get one console. Two settings on the report service and one
+entry in the proxy config:
+
+```yaml
+# LiteLLM config.yaml
+general_settings:
+  plugins:
+    - name: finops
+      display_name: FinOps
+      url: https://finops.example.com      # the URL browsers reach the report at
+```
+
+```bash
+# the report service (the gateway, pip install "llm-finops-gateway[litellm-ui]")
+LFG_LITELLM_PLUGIN_NAME=finops
+LFG_LITELLM_SALT_KEY=<the proxy's LITELLM_SALT_KEY>
+```
+
+LiteLLM derives a key per plugin from its salt key and encrypts a 30-second identity claim
+with it; the report service verifies the claim, admits `proxy_admin` and `proxy_admin_viewer`
+only, and sets an HttpOnly session cookie (`SameSite=None; Secure`, eight hours) that gives
+the report the scope of a `role: finops` key. Because the report is a third-party frame, the
+cookie needs HTTPS or `localhost`; the example stack serves it on `http://localhost:8081`.
+Nothing changes for team keys and finops keys outside the dashboard.
+
 ## What it does not do (yet)
 
 - No webhook alerts from the plugin yet (LiteLLM has its own alerting); metrics are covered
   above.
 - Only chat completions are priced; embeddings and other call types pass through untouched.
-- The report page is not inside the LiteLLM dashboard; run the gateway's `/finops` page
-  against the same `LFG_DATABASE_URL` (the compose stack does this on port 8081).
+- Per-user attribution: the plugin keys calls by team; a user id from LiteLLM is not
+  recorded on the ledger row.
 
 ## Latency
 

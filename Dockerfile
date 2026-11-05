@@ -3,7 +3,7 @@ FROM python:3.12-slim AS build
 WORKDIR /app
 COPY pyproject.toml README.md LICENSE NOTICE ./
 COPY src ./src
-RUN pip install --no-cache-dir --upgrade pip && pip install --no-cache-dir ".[azure,postgres]"
+RUN pip install --no-cache-dir --upgrade pip && pip install --no-cache-dir ".[azure,postgres,litellm-ui]"
 
 FROM python:3.12-slim
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 \

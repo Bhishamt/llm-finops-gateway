@@ -33,6 +33,7 @@ src/llm_finops_gateway/
   reload.py        WatchedFile: price book and policies reloaded on change (ADR-0022)
   focus.py         FOCUS 1.1 export of the ledger, daily rows (ADR-0023); CLI `ledger export`
   litellm_plugin.py FinOpsPlugin (LiteLLM CustomLogger): the same rules inside a LiteLLM proxy (ADR-0019)
+  litellm_ui.py    the report page as a LiteLLM dashboard plugin: claim verification, session cookie, shell (ADR-0024)
   providers/       base.py (Provider protocol), ollama.py, azure_openai.py, openai_compat.py (ADR-0010),
                    azure_identity.py (Entra ID tokens, [azure] extra, ADR-0014)
   metrics.py       Prometheus; telemetry.py optional OTel ([otel] extra, finops.* span attrs)
@@ -49,8 +50,8 @@ examples/          OpenAI SDK examples (python/chat.py, typescript/chat.ts); lit
 deploy/azure/      main.bicep + openai-role.bicep + keys.sh + db_roles.py + README: Container Apps + PostgreSQL + Key Vault (keys.yaml there is git-ignored)
 docs/database.md   ledger engines, schema, PostgreSQL roles (lfgadmin/lfg_app/lfg_reporting), operations
 docs/              architecture.md, deployment.md, azure-setup.md, testing-plan.md, comparison.md,
-                   litellm.md, adr/0001..0023
-tests/             one test module per source module, 224 tests (+3 PostgreSQL tests when LFG_TEST_DATABASE_URL is set;
+                   litellm.md, adr/0001..0024
+tests/             one test module per source module, 231 tests (+3 PostgreSQL tests when LFG_TEST_DATABASE_URL is set;
                    the 11 LiteLLM plugin tests skip without the [litellm] extra), FakeProvider in conftest.py
 ```
 
@@ -93,7 +94,8 @@ tests/             one test module per source module, 224 tests (+3 PostgreSQL t
   event, no ledger row (ADR-0012).
 - Endpoints: `/v1/chat/completions`, `/v1/models`, `/v1/finops/summary`, `/v1/finops/summary.csv`,
   `/v1/finops/export.focus.csv` (FOCUS rows per day, ADR-0023), `/v1/finops/budgets`, `/finops` (HTML),
-  `/metrics`, `/healthz`. Report views share one scope
+  `/metrics`, `/healthz`; with `LFG_LITELLM_PLUGIN_NAME` + `LFG_LITELLM_SALT_KEY`: `/`, `/api/plugin-manifest`,
+  `/api/plugin-auth`, `/api/plugin-session` (ADR-0024). Report views share one scope
   rule: team key = own team, `role: finops` = all, 401 without a key in `api_key` mode.
 
 ## Working rules
@@ -123,7 +125,7 @@ Bias toward caution over speed; for trivial tasks use judgment.
 - `make check` must be green before any commit: ruff (lint + format), mypy `--strict` on
   `src` and `tests`, pytest. Pre-commit is installed by `make install`.
 - Every module has a test module; new behaviour comes with a test in the same change.
-- Every design decision gets an ADR in `docs/adr/` (next number: 0024). ADR-0009 (evaluation
+- Every design decision gets an ADR in `docs/adr/` (next number: 0025). ADR-0009 (evaluation
   replay) is Proposed, not implemented.
 - Decimal for money everywhere; never float.
 - Secrets only via env / `SecretStr`. Never commit a raw `lfg_` key, `.env`, `*.db`, `demo/out/`.

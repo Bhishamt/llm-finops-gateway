@@ -37,12 +37,14 @@ dev = [
   "respx>=0.21",
   "types-PyYAML",
   "pre-commit>=3.7",
+  "cryptography>=42",
 ]
 demo = ["matplotlib>=3.8"]
 azure = ["azure-identity>=1.19"]
 postgres = ["psycopg[binary]>=3.2"]
 litellm = ["litellm>=1.108,<1.109"]
 assistant = ["streamlit>=1.38", "httpx>=0.27"]
+litellm-ui = ["cryptography>=42"]
 otel = [
   "opentelemetry-api>=1.25",
   "opentelemetry-sdk>=1.25",

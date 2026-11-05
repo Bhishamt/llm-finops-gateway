@@ -28,6 +28,7 @@ immutable once accepted; a later ADR supersedes an earlier one rather than editi
 | [0021](0021-project-registry-and-budgets.md) | Projects and use cases are registered in the policy file, with their own budgets | Proposed |
 | [0022](0022-configuration-hot-reload.md) | The price book and the policy file are reloaded when they change | Proposed |
 | [0023](0023-focus-export.md) | The ledger is exported in the FOCUS format | Proposed |
+| [0024](0024-litellm-dashboard-plugin.md) | The report page runs inside the LiteLLM dashboard as a plugin | Proposed |
 
 ## Template
 

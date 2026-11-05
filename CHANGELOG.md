@@ -8,6 +8,10 @@ is called out here.
 ## [Unreleased]
 
 ### Added
+- The report page as a LiteLLM dashboard plugin (ADR-0024): with `LFG_LITELLM_PLUGIN_NAME`
+  and `LFG_LITELLM_SALT_KEY` set, the gateway serves the shell, manifest and auth endpoints
+  the dashboard expects, verifies its identity claim and admits admin roles with a session
+  cookie; extra `[litellm-ui]` (cryptography), in the container image by default.
 - FOCUS export (ADR-0023): `GET /v1/finops/export.focus.csv` and `ledger export` write the
   ledger as FOCUS 1.1 rows per team, project, use case, provider, model, price book version
   and UTC day, with `x_` columns for calls and token detail.

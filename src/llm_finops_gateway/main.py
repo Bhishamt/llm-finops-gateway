@@ -28,6 +28,16 @@ from .config import ProviderKind, Settings
 from .enforcement import budget_headers, cost_headers, rejection
 from .focus import focus_csv
 from .ledger import CostEntry, Ledger
+from .litellm_ui import (
+    ADMIN_ROLES,
+    SESSION_COOKIE,
+    SESSION_TTL_SECONDS,
+    SHELL_HTML,
+    issue_session,
+    manifest,
+    verify_claim,
+    verify_session,
+)
 from .metrics import CONTENT_TYPE, Metrics
 from .models import (
     BudgetEnvelope,
@@ -730,6 +740,54 @@ def create_app(
             month_start=month_start().isoformat(),
             teams=budget_rows(scope.team),
         )
+
+    if settings.litellm_plugin_name and settings.litellm_salt_key:
+        # The report page as a LiteLLM dashboard plugin (ADR-0024).
+        plugin_name = settings.litellm_plugin_name
+        salt_key = settings.litellm_salt_key.get_secret_value()
+
+        @app.get("/", response_class=HTMLResponse, include_in_schema=False)
+        async def plugin_shell() -> str:
+            return SHELL_HTML
+
+        @app.get("/api/plugin-manifest", include_in_schema=False)
+        async def plugin_manifest() -> dict[str, Any]:
+            return manifest(plugin_name, __version__)
+
+        @app.get("/api/plugin-session", include_in_schema=False)
+        async def plugin_session(request: Request) -> dict[str, Any]:
+            session = verify_session(salt_key, plugin_name, request.cookies.get(SESSION_COOKIE))
+            if session is None:
+                raise HTTPException(status_code=401, detail="no plugin session")
+            return session
+
+        @app.post("/api/plugin-auth", include_in_schema=False)
+        async def plugin_auth(request: Request, response: Response) -> dict[str, Any]:
+            body = await request.json()
+            claim_text = body.get("session_claim") if isinstance(body, dict) else None
+            if not isinstance(claim_text, str) or not claim_text:
+                raise HTTPException(status_code=400, detail="session_claim is required")
+            try:
+                claim = verify_claim(salt_key, plugin_name, claim_text)
+            except ValueError as exc:
+                raise HTTPException(status_code=401, detail=str(exc)) from exc
+            user_id = str(claim.get("user_id") or "")
+            user_role = str(claim.get("user_role") or "")
+            if user_role not in ADMIN_ROLES:
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"role '{user_role or 'none'}' may not open the FinOps report",
+                )
+            response.set_cookie(
+                SESSION_COOKIE,
+                issue_session(salt_key, plugin_name, user_id, user_role),
+                max_age=SESSION_TTL_SECONDS,
+                httponly=True,
+                secure=True,
+                samesite="none",
+            )
+            log.info("litellm plugin session for user=%s role=%s", user_id, user_role)
+            return {"user_id": user_id, "user_role": user_role}
 
     @app.get("/finops", response_class=HTMLResponse, include_in_schema=False)
     async def finops_page(request: Request, team: str | None = None) -> HTMLResponse:
