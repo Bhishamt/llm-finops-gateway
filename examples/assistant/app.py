@@ -90,6 +90,11 @@ def _receipt(r: Receipt) -> None:
     _pct_bar("Project", r.project_budget)
     if r.warning:
         st.warning(r.warning)
+    if r.cached_input_tokens:
+        st.caption(
+            f"{r.cached_input_tokens} prompt tokens came from the provider's cache "
+            "and were billed at the cached-input price"
+        )
     st.caption(f"request id {r.request_id}")
 
 

@@ -613,7 +613,9 @@ def create_app(
                 engine.project_budget_status(attr.team, attr.project),
             )
         )
-        response.headers.update(cost_headers(request_id, cost, book.currency))
+        response.headers.update(
+            cost_headers(request_id, cost, book.currency, result.cached_input_tokens)
+        )
 
         return ChatResponse(
             id=request_id,

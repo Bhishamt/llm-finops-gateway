@@ -217,6 +217,7 @@ def test_cached_input_tokens_are_priced_and_reported(
     body = r.json()
     assert body["usage"]["prompt_tokens_details"] == {"cached_tokens": 40}
     assert Decimal(body["x_finops"]["cost_usd"]) == Decimal("0.0007")
+    assert r.headers["X-FinOps-Cached-Input-Tokens"] == "40"
 
 
 def test_price_book_provider_routes_each_model(tmp_path: Path, ledger: Ledger) -> None:

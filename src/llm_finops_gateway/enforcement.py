@@ -62,10 +62,15 @@ def budget_headers(
     return headers
 
 
-def cost_headers(request_id: str, cost: Decimal, currency: str) -> dict[str, str]:
-    """The three headers every settled call carries."""
+def cost_headers(
+    request_id: str, cost: Decimal, currency: str, cached_input_tokens: int = 0
+) -> dict[str, str]:
+    """The four headers every settled call carries. ``X-FinOps-Cached-Input-Tokens`` is the
+    part of the prompt the provider served from its prompt cache, billed at the row's
+    ``cached_input`` price (0 when the provider reported none)."""
     return {
         "X-FinOps-Cost-USD": money(cost),
         "X-FinOps-Currency": currency,
         "X-FinOps-Request-Id": request_id,
+        "X-FinOps-Cached-Input-Tokens": str(cached_input_tokens),
     }

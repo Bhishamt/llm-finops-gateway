@@ -36,7 +36,8 @@ that installs the package into the official LiteLLM image, and `demo.sh`.
 | Release | `async_log_failure_event` | The reservation is given back when the upstream call fails |
 
 Headers on every settled non-streaming response: `X-FinOps-Request-Id` (prefix `lt-`),
-`X-FinOps-Cost-USD`, `X-FinOps-Currency`, `X-FinOps-Budget-*`, `X-FinOps-Warning`. Streamed
+`X-FinOps-Cost-USD`, `X-FinOps-Currency`, `X-FinOps-Cached-Input-Tokens`, `X-FinOps-Budget-*`,
+`X-FinOps-Warning`. Streamed
 responses carry the request id and the budget state as of the start of the call; their cost
 is settled when the stream ends and is visible in the ledger and the report page. The response
 body is never modified: there is no `x_finops` block in LiteLLM mode.
