@@ -4,6 +4,8 @@ import importlib.util
 import sys
 from pathlib import Path
 
+import httpx
+
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location(
     "finops_client", ROOT / "examples" / "assistant" / "finops_client.py"
@@ -69,3 +71,63 @@ def test_docs_context_lists_files_in_order(tmp_path: Path) -> None:
     assert "===== docs/adr/0001-x.md" in ctx and ctx.endswith("adr")
     # a header per file: README (32 chars) and docs/a.md (26) fit in 60, docs/b.md does not
     assert finops_client.docs_context(tmp_path, max_chars=60).count("\n===== ") == 2
+
+
+def _litellm_target(request: httpx.Request) -> httpx.Response:
+    auth = request.headers.get("authorization")
+    if request.url.path == "/key/info" and auth == "Bearer sk-virtual":
+        info = {
+            "key_alias": "support-bot",
+            "team_id": "t-1",
+            "team_alias": None,
+            "metadata": {"finops": {"project": "internal-tools", "use_case": "triage"}},
+        }
+        return httpx.Response(200, json={"key": "sk-...", "info": info})
+    if request.url.path == "/team/info" and request.url.params.get("team_id") == "t-1":
+        return httpx.Response(200, json={"team_id": "t-1", "team_info": {"team_alias": "support"}})
+    return httpx.Response(401, json={"error": "nope"})
+
+
+def _gateway_target(request: httpx.Request) -> httpx.Response:
+    auth = request.headers.get("authorization")
+    if request.url.path == "/v1/finops/budgets" and auth == "Bearer lfg_team":
+        return httpx.Response(200, json={"policy_version": "p", "teams": [{"team": "platform"}]})
+    if request.url.path == "/v1/finops/budgets" and auth == "Bearer lfg_finops":
+        teams = [{"team": "platform"}, {"team": "research"}]
+        return httpx.Response(200, json={"policy_version": "p", "teams": teams})
+    return httpx.Response(404 if request.url.path == "/key/info" else 401)
+
+
+def test_identity_of_a_litellm_virtual_key_resolves_team_and_defaults() -> None:
+    who = finops_client.identity(
+        "http://litellm", "sk-virtual", transport=httpx.MockTransport(_litellm_target)
+    )
+    assert who is not None
+    assert (who.source, who.team, who.key_alias) == ("litellm", "support", "support-bot")
+    assert (who.default_project, who.default_use_case) == ("internal-tools", "triage")
+    assert (
+        finops_client.identity(
+            "http://litellm", "sk-x", transport=httpx.MockTransport(_litellm_target)
+        )
+        is None
+    )
+
+
+def test_identity_of_gateway_keys_comes_from_the_budgets_scope() -> None:
+    t = httpx.MockTransport(_gateway_target)
+    team_key = finops_client.identity("http://gw", "lfg_team", transport=t)
+    assert team_key is not None and (team_key.source, team_key.team) == ("gateway", "platform")
+    finops_key = finops_client.identity("http://gw", "lfg_finops", transport=t)
+    assert finops_key is not None and finops_key.team is None  # sees every team
+    assert finops_client.identity("http://gw", "lfg_bad", transport=t) is None
+
+
+def test_budgets_narrows_with_x_team_in_headers_mode() -> None:
+    seen: dict[str, str] = {}
+
+    def report(request: httpx.Request) -> httpx.Response:
+        seen.update({k: v for k, v in request.headers.items() if k.startswith("x-")})
+        return httpx.Response(200, json={"policy_version": "p", "teams": []})
+
+    finops_client.budgets("http://report", None, "platform", transport=httpx.MockTransport(report))
+    assert seen == {"x-team": "platform"}

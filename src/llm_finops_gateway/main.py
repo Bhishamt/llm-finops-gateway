@@ -51,6 +51,7 @@ from .models import (
     CostSummaryRow,
     FinOpsEnvelope,
     PolicyEnvelope,
+    ProjectBudgetRow,
     PromptTokensDetails,
     TeamBudgetRow,
     ToolCall,
@@ -649,7 +650,7 @@ def create_app(
     def cost_summary(team: str | None, project: str | None) -> CostSummary:
         rows = ledger.summary(team=team, project=project)
         return CostSummary(
-            currency=price_book.currency,
+            currency=app.state.price_book.currency,
             rows=[
                 CostSummaryRow(
                     team=r.team,
@@ -666,15 +667,31 @@ def create_app(
         )
 
     def budget_rows(team: str | None) -> list[TeamBudgetRow]:
-        names = set(policies.teams()) | {r.team for r in ledger.summary()}
+        current: PolicySet = app.state.policies  # the version in service (ADR-0022)
+        names = set(current.teams()) | {r.team for r in ledger.summary()}
         if team is not None:
             names = {team}
         rows = []
         for name in sorted(names):
-            effective = policies.resolve(name)
+            effective = current.resolve(name)
             status = engine.budget_status(name)
             if status is not None:
                 metrics.budget_used.labels(name).set(float(status.used_pct) / 100)
+            projects = None
+            if effective.projects is not None:
+                projects = [
+                    ProjectBudgetRow(
+                        project=pname,
+                        allowed_models=(
+                            proj.allowed_models
+                            if proj.allowed_models is not None
+                            else effective.allowed_models
+                        ),
+                        use_cases=proj.use_cases,
+                        budget=_budget_envelope(engine.project_budget_status(name, pname)),
+                    )
+                    for pname, proj in effective.projects.items()
+                ]
             rows.append(
                 TeamBudgetRow(
                     team=name,
@@ -683,6 +700,7 @@ def create_app(
                         effective.rate_limit.requests_per_minute if effective.rate_limit else None
                     ),
                     budget=_budget_envelope(status),
+                    projects=projects,
                 )
             )
         return rows
@@ -690,6 +708,7 @@ def create_app(
     # Reports (ADR-0016): a team key reads its own team, a finops key every team.
     @app.get("/v1/finops/summary", response_model=CostSummary)
     async def finops_summary(
+        state: Annotated[Any, Depends(_state)],
         scope: Annotated[ReportScope, Depends(resolve_report_scope)],
         team: str | None = None,
         project: str | None = None,
@@ -698,6 +717,7 @@ def create_app(
 
     @app.get("/v1/finops/summary.csv", include_in_schema=True)
     async def finops_summary_csv(
+        state: Annotated[Any, Depends(_state)],
         scope: Annotated[ReportScope, Depends(resolve_report_scope)],
         team: str | None = None,
         project: str | None = None,
@@ -735,6 +755,7 @@ def create_app(
 
     @app.get("/v1/finops/budgets", response_model=BudgetReport)
     async def finops_budgets(
+        state: Annotated[Any, Depends(_state)],
         scope: Annotated[ReportScope, Depends(resolve_report_scope)],
     ) -> BudgetReport:
         return BudgetReport(
@@ -793,6 +814,9 @@ def create_app(
 
     @app.get("/finops", response_class=HTMLResponse, include_in_schema=False)
     async def finops_page(request: Request, team: str | None = None) -> HTMLResponse:
+        state = _state(request)
+        current: PolicySet = state.policies
+        book: PriceBook = state.price_book
         try:
             scope = scope_for(
                 request, request.headers.get("authorization"), request.headers.get("x-team")
@@ -807,7 +831,7 @@ def create_app(
         teams = [b.team for b in budgets]
 
         def policy_row(name: str, label: str) -> PolicyRow:
-            eff = policies.resolve(name)
+            eff = current.resolve(name)
             b = eff.budget
             return PolicyRow(
                 team=label,
@@ -828,11 +852,11 @@ def create_app(
             else None
         )
         price_rows = []
-        for m in price_book.models():
-            if team_filter is not None and m not in policies.resolve(team_filter).allowed_models:
-                if "*" not in policies.resolve(team_filter).allowed_models:
+        for m in book.models():
+            if team_filter is not None and m not in current.resolve(team_filter).allowed_models:
+                if "*" not in current.resolve(team_filter).allowed_models:
                     continue
-            p = price_book.price(m)
+            p = book.price(m)
             price_rows.append(
                 PriceRow(
                     model=m,
@@ -845,8 +869,8 @@ def create_app(
             )
         ctx = ReportContext(
             version=__version__,
-            price_book_version=price_book.version,
-            currency=price_book.currency,
+            price_book_version=book.version,
+            currency=book.currency,
             policy_version=engine.version,
             providers=",".join(sorted(providers)),
             month_start=month_start().date().isoformat(),

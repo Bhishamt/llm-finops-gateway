@@ -68,9 +68,10 @@ example stack: [examples/litellm/](examples/litellm/).
 
 ## Try it from a browser
 
-`examples/assistant/` is a small Streamlit page: pick a role (a team key), a project and a use
-case, chat, and read the receipt next to every answer: cost, team and project budget,
-warnings, or the rejection that stopped the call before the model. A second panel answers
+`examples/assistant/` is a small Streamlit page: sign in with a key, and the page shows what
+the policy says about it (team, allowed models, budget, registered projects and use cases);
+pick a project and a use case, chat, and read the receipt next to every answer: cost, team and
+project budget, warnings, or the rejection that stopped the call before the model. A second panel answers
 questions about this project from its documentation, through the same gateway, so that
 traffic is attributed too. `pip install "llm-finops-gateway[assistant]"` and
 `streamlit run examples/assistant/app.py`, or the `assistant` service of the LiteLLM compose
@@ -382,7 +383,7 @@ parse keeps the previous version running and logs the error (ADR-0022).
 | GET    | `/finops`                | Report page: budgets and chargeback, HTML, no build step   |
 | GET    | `/v1/finops/summary`     | Cost grouped by team / project / model, filterable         |
 | GET    | `/v1/finops/summary.csv` | The same rows as CSV for spreadsheets and BI tools         |
-| GET    | `/v1/finops/budgets`     | Month-to-date budget, rate limit and allow-list per team   |
+| GET    | `/v1/finops/budgets`     | Month-to-date budget, rate limit, allow-list and project registry per team |
 | GET    | `/v1/finops/export.focus.csv` | The ledger as FOCUS rows per day (`from`, `to`, `team`, `project`), for FinOps datasets |
 | GET    | `/metrics`               | Prometheus: requests by outcome, cost, tokens, latency, budget ratio |
 | GET    | `/healthz`               | Liveness, version, auth mode, price book and policy versions |

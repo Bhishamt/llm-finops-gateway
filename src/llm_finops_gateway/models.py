@@ -159,11 +159,22 @@ class FinOpsEnvelope(BaseModel):
     policy: PolicyEnvelope
 
 
+class ProjectBudgetRow(BaseModel):
+    """A registered project of a team (ADR-0021) with its effective models, use cases and
+    budget state."""
+
+    project: str
+    allowed_models: list[str]
+    use_cases: list[str] | None = None
+    budget: BudgetEnvelope | None
+
+
 class TeamBudgetRow(BaseModel):
     team: str
     allowed_models: list[str]
     requests_per_minute: int | None = None
     budget: BudgetEnvelope | None
+    projects: list[ProjectBudgetRow] | None = None  # None: the team keeps free-text projects
 
 
 class BudgetReport(BaseModel):

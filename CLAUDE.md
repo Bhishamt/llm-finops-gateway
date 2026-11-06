@@ -45,7 +45,7 @@ src/llm_finops_gateway/
 config/            pricing.yaml, policies.yaml, keys.yaml (hashes only, repo copy is `keys: []`)
 demo/              run_demo.py (simulated or live), policies.yaml (tiny budgets), README.md
 examples/          OpenAI SDK examples (python/chat.py, typescript/chat.ts); litellm/ compose stack,
-                   Dockerfile and demo.sh for the plugin; assistant/ Streamlit page (roles, receipt,
+                   Dockerfile and demo.sh for the plugin; assistant/ Streamlit page (key sign-in, receipt,
                    docs Q&A through the gateway); grafana/ dashboard JSON
 deploy/azure/      main.bicep + openai-role.bicep + keys.sh + db_roles.py + README: Container Apps + PostgreSQL + Key Vault (keys.yaml there is git-ignored)
 docs/database.md   ledger engines, schema, PostgreSQL roles (lfgadmin/lfg_app/lfg_reporting), operations

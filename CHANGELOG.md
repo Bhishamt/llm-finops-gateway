@@ -23,9 +23,12 @@ is called out here.
   ledger as FOCUS 1.1 rows per team, project, use case, provider, model, price book version
   and UTC day, with `x_` columns for calls and token detail.
 - `examples/assistant/`: a Streamlit page that chats through the gateway or the plugin and
-  shows the FinOps receipt next to every answer (roles as team keys, project and use case
-  fields, team and project budget bars, rejections), plus a documentation Q&A panel routed
-  through the same gateway; extra `[assistant]`, Dockerfile and compose service on port 8501.
+  shows the FinOps receipt next to every answer (sign in with a key, the page reads the key's
+  team, models, budget and registered projects from the policy; team and project budget bars,
+  rejections), plus a documentation Q&A panel routed through the same gateway; extra
+  `[assistant]`, Dockerfile and compose service on port 8501.
+- `/v1/finops/budgets` lists each team's project registry (`projects`: effective models, use
+  cases and budget state per registered project; `null` for teams with free-text projects).
 - The LiteLLM plugin publishes the gateway's `lfg_*` Prometheus metrics into the registry
   LiteLLM serves on `/metrics/`, so the shipped Grafana dashboard shows LiteLLM traffic without
   changes; `observability/prometheus.yml` scrapes the example proxy.
