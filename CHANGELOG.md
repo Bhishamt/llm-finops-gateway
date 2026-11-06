@@ -8,6 +8,8 @@ is called out here.
 ## [Unreleased]
 
 ### Added
+- LiteLLM plugin: the gateway's webhook alerts (`budget_warn`, `budget_block`,
+  `upstream_error`, ADR-0017) are posted from the plugin too, from `LFG_ALERT_WEBHOOK_URL`.
 - LiteLLM plugin: a key's metadata may carry a default project and use case
   (`{"finops": {"project": ..., "use_case": ...}}` on `/key/generate`), used when the
   `X-Project` / `X-Use-Case` headers are absent; the headers win when present. A service key

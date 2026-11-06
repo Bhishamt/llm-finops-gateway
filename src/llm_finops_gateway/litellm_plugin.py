@@ -31,6 +31,7 @@ from fastapi import HTTPException
 from litellm.integrations.custom_logger import CustomLogger
 from prometheus_client import REGISTRY
 
+from .alerts import Alerter
 from .attribution import Attribution, attribution_from_headers
 from .config import Settings
 from .enforcement import budget_headers, cost_headers, rejection
@@ -115,6 +116,7 @@ class FinOpsPlugin(CustomLogger):
         policies: PolicySet | None = None,
         ledger: Ledger | None = None,
         metrics: Metrics | None = None,
+        alerter: Alerter | None = None,
     ) -> None:
         super().__init__()
         self._settings = settings
@@ -122,6 +124,7 @@ class FinOpsPlugin(CustomLogger):
         self._policies = policies
         self._ledger = ledger
         self._metrics = metrics
+        self._alerter = alerter
         self._engine: PolicyEngine | None = None
         self._pending: dict[str, _Pending] = {}
         self._book_watch: WatchedFile[PriceBook] | None = None
@@ -159,6 +162,16 @@ class FinOpsPlugin(CustomLogger):
                 except ValueError:  # already registered in this process
                     self._metrics = Metrics()
                     log.warning("lfg_* metrics already registered; using a private registry")
+            if self._alerter is None:
+                # Webhook alerts (ADR-0017) on the same events as the gateway's.
+                self._alerter = Alerter(
+                    settings.alert_webhook_url.get_secret_value()
+                    if settings.alert_webhook_url
+                    else None,
+                    cooldown_seconds=settings.alert_cooldown_seconds,
+                    currency=self._book.currency,
+                    fmt=settings.alert_format,
+                )
             self._engine = PolicyEngine(self._policies, self._ledger)
             log.info(
                 "finops plugin ready: price book %s (%s), policies %s, %d models",
@@ -247,8 +260,12 @@ class FinOpsPlugin(CustomLogger):
         decision = engine.check(attr, model, estimate)
         if not decision.allowed:
             self._count(attr.team, model, decision.violation or "blocked")
+            if decision.violation == "budget_exceeded" and self._alerter is not None:
+                self._alerter.budget_block(attr.team, decision.budget, decision.message or "")
             status_code, detail, extra = rejection(decision, attr, model, engine.version)
             raise HTTPException(status_code=status_code, detail=detail, headers=extra)
+        if decision.warnings and decision.budget is not None and self._alerter is not None:
+            self._alerter.budget_warn(attr.team, decision.budget, decision.warnings[0])
 
         request_id = f"lt-{uuid.uuid4().hex}"
         self._pending[request_id] = _Pending(
@@ -412,6 +429,14 @@ class FinOpsPlugin(CustomLogger):
         if pending is not None:
             self._release(pending, self._ensure()[2])
             self._count(pending.attr.team, pending.model, "upstream_error")
+            if self._alerter is not None:
+                slo = kwargs.get("standard_logging_object") or {}
+                self._alerter.upstream_failure(
+                    str(slo.get("custom_llm_provider") or "litellm"),
+                    "upstream_error",
+                    pending.model,
+                    str(kwargs.get("exception") or slo.get("error_str") or ""),
+                )
             log.info("released reservation after failure request_id=%s", pending.request_id)
 
 

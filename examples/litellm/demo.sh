@@ -6,8 +6,12 @@
 set -euo pipefail
 if [ "${1:-}" = "--reset" ]; then
   # Fresh month: drop the LiteLLM database and the plugin ledger, forget the cached keys.
+  # compose parses the assistant's env_file even for `down`: make sure it exists, then start from an empty one
+  mkdir -p "${STATE_DIR:-.demo-keys}" && touch "${STATE_DIR:-.demo-keys}/assistant.env"
   docker compose --env-file ../../.env down -v
   rm -rf "${STATE_DIR:-.demo-keys}"
+  mkdir -p "${STATE_DIR:-.demo-keys}" && : > "${STATE_DIR:-.demo-keys}/assistant.env"
+  RESTART_ASSISTANT=1
   docker compose --env-file ../../.env up -d --build
   for i in $(seq 1 40); do
     curl -s -m 3 -o /dev/null -w "%{http_code}" "${LITELLM_URL:-http://localhost:4001}/health/liveliness" 2>/dev/null | grep -q 200 && break
@@ -46,6 +50,8 @@ BOT=$(key_for customer-support support-bot '{"finops":{"project":"internal-tools
 # keys for the assistant container (examples/assistant), picked up on its next start
 printf 'LFG_ASSISTANT_KEYS={"ceo":"%s","team-leads":"%s","employees":"%s","customer-support":"%s","research":"%s"}\n' \
   "$CEO" "$TL" "$EMP" "$CS" "$RS" > "$STATE/assistant.env"
+# after a reset the assistant container started with an empty key file: recreate it with the keys
+[ -n "${RESTART_ASSISTANT:-}" ] && docker compose --env-file ../../.env up -d assistant >/dev/null 2>&1
 SMALL='{"model":"gpt-4.1-mini","messages":[{"role":"user","content":"Say OK"}],"max_tokens":5}'
 # A nonce keeps the big prompt unique per run: a repeated prompt is served from Azure's prompt
 # cache at the cached-input price, which is a nice effect but would stop the budget demo.
@@ -61,9 +67,9 @@ curl -s -o /dev/stderr -w "    HTTP %{http_code}\n" "$B/v1/chat/completions" -H 
 step "4. Priced call with a registered project: cost, team budget and project budget in the headers"
 curl -s -D - -o /dev/null "$B/v1/chat/completions" -H "Authorization: Bearer $CS" -H "X-Project: chat-assistant" -H "X-Use-Case: faq" -H "$CT" -d "$SMALL" | show
 step "5. A big prompt takes the project past its warn threshold"
-curl -s -D - -o /dev/null "$B/v1/chat/completions" -H "Authorization: Bearer $CS" -H "X-Project: chat-assistant" -H "$CT" --data-binary "$BIG" | show
+curl -s -D - -o /dev/null "$B/v1/chat/completions" -H "Authorization: Bearer $CS" -H "X-Project: chat-assistant" -H "X-Use-Case: summaries" -H "$CT" --data-binary "$BIG" | show
 step "6. The next big prompt would exceed the project budget: blocked before the call (403)"
-curl -s -o /dev/stderr -w "    HTTP %{http_code}\n" "$B/v1/chat/completions" -H "Authorization: Bearer $CS" -H "X-Project: chat-assistant" -H "$CT" --data-binary "$BIG" 2>&1 | head -c 400; echo
+curl -s -o /dev/stderr -w "    HTTP %{http_code}\n" "$B/v1/chat/completions" -H "Authorization: Bearer $CS" -H "X-Project: chat-assistant" -H "X-Use-Case: summaries" -H "$CT" --data-binary "$BIG" 2>&1 | head -c 400; echo
 step "7. Research is warn-only and streams; the cost is settled when the stream ends"
 curl -s -N -D /tmp/finops-demo.h -o /dev/null "$B/v1/chat/completions" -H "Authorization: Bearer $RS" -H "X-Project: experiments" -H "$CT" \
   -d '{"model":"gpt-4.1-mini","messages":[{"role":"user","content":"Say OK"}],"max_tokens":5,"stream":true,"stream_options":{"include_usage":true}}'

@@ -1,16 +1,20 @@
 """The LiteLLM plugin, exercised through its hooks without a LiteLLM server."""
 
+import json
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+import httpx
 import pytest
+import respx
 from fastapi import HTTPException
 
 pytest.importorskip("litellm", reason="[litellm] extra not installed")
 
+from llm_finops_gateway.alerts import Alerter  # noqa: E402
 from llm_finops_gateway.ledger import Ledger  # noqa: E402
 from llm_finops_gateway.litellm_plugin import META, FinOpsPlugin  # noqa: E402
 from llm_finops_gateway.policy import PolicySet  # noqa: E402
@@ -340,3 +344,50 @@ async def test_plugin_emits_the_gateway_metrics(tmp_path: Path, ledger: Ledger) 
     assert f'lfg_tokens_total{{direction="input",model="gpt-4o-mini",{cs}}} 18.0' in text
     assert 'lfg_upstream_latency_seconds_count{model="gpt-4o-mini",provider="azure"} 1.0' in text
     assert f"lfg_budget_used_ratio{{{cs}}}" in text
+
+
+@respx.mock
+async def test_plugin_posts_the_same_webhook_alerts_as_the_gateway(
+    tmp_path: Path, ledger: Ledger
+) -> None:
+    hook = "https://hooks.example.test/finops"
+    route = respx.post(hook).mock(return_value=httpx.Response(200, text="ok"))
+    (tmp_path / "pricing.yaml").write_text(PRICING)
+    (tmp_path / "policies.yaml").write_text(POLICIES)
+    alerter = Alerter(hook, cooldown_seconds=0)
+    plugin = FinOpsPlugin(
+        price_book=PriceBook.from_yaml(tmp_path / "pricing.yaml"),
+        policies=PolicySet.from_yaml(tmp_path / "policies.yaml"),
+        ledger=ledger,
+        alerter=alerter,
+    )
+    # research is warn-only: the first call past warn_at raises a budget_warn
+    data = await plugin.async_pre_call_hook(key(team="research"), None, request(), "acompletion")
+    assert data is not None
+    await plugin.async_post_call_response_headers_hook(
+        data, key(team="research"), response(prompt=4000, completion=0)
+    )
+    data = await plugin.async_pre_call_hook(key(team="research"), None, request(), "acompletion")
+    assert data is not None
+    # customer-support blocks: a budget_block
+    data2 = await plugin.async_pre_call_hook(key(), None, request(), "acompletion")
+    assert data2 is not None
+    await plugin.async_post_call_response_headers_hook(
+        data2, key(), response(prompt=10000, completion=0)
+    )
+    with pytest.raises(HTTPException):
+        await plugin.async_pre_call_hook(key(), None, request(), "acompletion")
+    # an upstream failure
+    data3 = await plugin.async_pre_call_hook(key(team="research"), None, request(), "acompletion")
+    assert data3 is not None
+    await plugin.async_log_failure_event(
+        {**success_kwargs(data3), "exception": RuntimeError("boom")}, None, 0.0, 1.0
+    )
+    await alerter.aclose()
+    events = [json.loads(c.request.content)["event"] for c in route.calls]
+    # research warns again on the third call (cooldown 0), then the failure alert
+    assert events == ["budget_warn", "budget_block", "budget_warn", "upstream_error"]
+    body = json.loads(route.calls[3].request.content)
+    assert (
+        body["provider"] == "azure" and body["model"] == "gpt-4o-mini" and "boom" in body["message"]
+    )

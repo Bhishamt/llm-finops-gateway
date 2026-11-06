@@ -150,10 +150,16 @@ the report the scope of a `role: finops` key. Because the report is a third-part
 cookie needs HTTPS or `localhost`; the example stack serves it on `http://localhost:8081`.
 Nothing changes for team keys and finops keys outside the dashboard.
 
+## Alerts
+
+The plugin posts the gateway's webhook alerts (ADR-0017) from the same events: `budget_warn`
+when a team crosses `warn_at`, `budget_block` when a call is refused for the budget,
+`upstream_error` when LiteLLM reports a failed call. Set `LFG_ALERT_WEBHOOK_URL` (and
+optionally `LFG_ALERT_FORMAT=teams`, `LFG_ALERT_COOLDOWN_SECONDS`) in the proxy's environment;
+nothing is posted without the URL. LiteLLM's own alerting keeps working next to it.
+
 ## What it does not do (yet)
 
-- No webhook alerts from the plugin yet (LiteLLM has its own alerting); metrics are covered
-  above.
 - Only chat completions are priced; embeddings and other call types pass through untouched.
 - Per-user attribution: the plugin keys calls by team; a user id from LiteLLM is not
   recorded on the ledger row.
