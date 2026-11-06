@@ -227,6 +227,7 @@ Standard OpenAI shape plus an `x_finops` block, and `X-FinOps-*` headers:
 ```
 X-FinOps-Cost-USD: 0.0000036
 X-FinOps-Currency: USD
+X-FinOps-Cached-Input-Tokens: 0
 X-FinOps-Budget-Limit-USD: 500
 X-FinOps-Budget-Spent-USD: 412.10
 X-FinOps-Budget-Used-Pct: 82.4

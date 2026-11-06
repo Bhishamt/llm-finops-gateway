@@ -350,7 +350,7 @@ class FinOpsPlugin(CustomLogger):
             hidden = getattr(response, "_hidden_params", None) or {}
             provider = str(hidden.get("custom_llm_provider") or "litellm")
             cost, status = self._settle(pending, usage, provider)
-            headers.update(cost_headers(request_id, cost, book.currency))
+            headers.update(cost_headers(request_id, cost, book.currency, usage.cached_input_tokens))
             headers.update(budget_headers(status, pending.warnings, self._project_status(pending)))
         else:
             # Streaming: the cost is settled from the success event once the stream ends.

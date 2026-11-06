@@ -192,6 +192,7 @@ async def test_cached_tokens_are_priced_at_the_cached_rate(
     )
     assert headers is not None
     assert headers["X-FinOps-Cost-USD"] == "0.0000075"  # 100 cached at 0.075 / 1M
+    assert headers["X-FinOps-Cached-Input-Tokens"] == "100"
 
 
 async def test_budget_blocks_with_403_once_spent(plugin: FinOpsPlugin, ledger: Ledger) -> None:

@@ -21,6 +21,7 @@ def test_receipt_reads_cost_and_both_budgets() -> None:
             "X-FinOps-Request-Id": "lt-1",
             "X-FinOps-Cost-USD": "0.0000052",
             "X-FinOps-Currency": "USD",
+            "X-FinOps-Cached-Input-Tokens": "1024",
             "X-FinOps-Budget-Used-Pct": "12.5",
             "X-FinOps-Budget-Status": "ok",
             "X-FinOps-Project-Budget-Used-Pct": "48.5",
@@ -29,6 +30,7 @@ def test_receipt_reads_cost_and_both_budgets() -> None:
         },
     )
     assert r.request_id == "lt-1" and r.cost == "0.0000052" and r.error is None
+    assert r.cached_input_tokens == 1024
     assert r.team_budget["used-pct"] == "12.5" and r.team_budget["status"] == "ok"
     assert r.project_budget["status"] == "warn"
     assert r.warning is not None and r.warning.startswith("project 'x'")

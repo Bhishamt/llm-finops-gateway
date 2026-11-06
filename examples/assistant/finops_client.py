@@ -15,6 +15,7 @@ FINOPS_HEADERS = (
     "X-FinOps-Request-Id",
     "X-FinOps-Cost-USD",
     "X-FinOps-Currency",
+    "X-FinOps-Cached-Input-Tokens",
     "X-FinOps-Budget-Limit-USD",
     "X-FinOps-Budget-Spent-USD",
     "X-FinOps-Budget-Used-Pct",
@@ -35,6 +36,7 @@ class Receipt:
     request_id: str | None = None
     cost: str | None = None
     currency: str = "USD"
+    cached_input_tokens: int = 0
     team_budget: dict[str, str] = field(default_factory=dict)
     project_budget: dict[str, str] = field(default_factory=dict)
     warning: str | None = None
@@ -47,6 +49,7 @@ def receipt_from_headers(status_code: int, headers: dict[str, str], body: Any = 
     r.request_id = h.get("x-finops-request-id")
     r.cost = h.get("x-finops-cost-usd")
     r.currency = h.get("x-finops-currency", "USD")
+    r.cached_input_tokens = int(h.get("x-finops-cached-input-tokens") or 0)
     for scope, prefix in (
         ("team_budget", "x-finops-budget-"),
         ("project_budget", "x-finops-project-budget-"),

@@ -61,4 +61,22 @@ step "7. Research is warn-only and streams; the cost is settled when the stream 
 curl -s -N -D /tmp/finops-demo.h -o /dev/null "$B/v1/chat/completions" -H "Authorization: Bearer $RS" -H "X-Project: experiments" -H "$CT" \
   -d '{"model":"gpt-4.1-mini","messages":[{"role":"user","content":"Say OK"}],"max_tokens":5,"stream":true,"stream_options":{"include_usage":true}}'
 show < /tmp/finops-demo.h
+step "8. Two teams ask the same long question: the second one is served from the provider's prompt cache"
+# Azure OpenAI and OpenAI cache prompt prefixes of 1024+ tokens for a few minutes, across keys and
+# teams. The plugin bills those tokens at the price book's cached_input price and reports them in
+# X-FinOps-Cached-Input-Tokens; each call is still attributed to its own team and project.
+SAME=$(python3 -c 'import json;print(json.dumps({"model":"gpt-4.1-mini","messages":[{"role":"system","content":"You are the support assistant. Knowledge base: "+("The return window is 30 days; refunds take 5 working days; exchanges are free in store. "*70)},{"role":"user","content":"How long is the return window? Answer in one sentence."}],"max_tokens":40}))')
+echo "   employees / project onboarding, use case faq (first call, full input price):"
+curl -s -D - -o /dev/null "$B/v1/chat/completions" -H "Authorization: Bearer $EMP" -H "X-Project: onboarding" -H "X-Use-Case: faq" -H "$CT" --data-binary "$SAME" | show
+echo "   team-leads / project support-bot, use case eval (same prompt, cached prefix):"
+curl -s -D - -o /dev/null "$B/v1/chat/completions" -H "Authorization: Bearer $TL" -H "X-Project: support-bot" -H "X-Use-Case: eval" -H "$CT" --data-binary "$SAME" | show
+echo "   FOCUS rows for today (report page on :8081): one row per team and project, cached tokens in x_CachedInputTokens"
+R=${REPORT_URL:-http://localhost:8081}; TODAY=$(date -u +%Y-%m-%d); TOMORROW=$(date -u -v+1d +%Y-%m-%d 2>/dev/null || date -u -d tomorrow +%Y-%m-%d)
+curl -s "$R/v1/finops/export.focus.csv?from=$TODAY&to=$TOMORROW" | python3 -c '
+import csv,json,sys
+print("    team | project | use case | input tokens | cached | BilledCost")
+for r in csv.DictReader(sys.stdin):
+    t=json.loads(r["Tags"])
+    if t.get("project") in ("onboarding","support-bot"):
+        print("    " + " | ".join([r["SubAccountId"],t["project"],t.get("use_case") or "",r["x_InputTokens"],r["x_CachedInputTokens"],r["BilledCost"]]))' 2>/dev/null || echo "    (report page not reachable at $R)"
 echo; echo "Ledger: the same tables the gateway writes; open the /finops report page against LFG_DATABASE_URL."

@@ -60,4 +60,6 @@ def test_cost_headers_use_money_formatting() -> None:
         "X-FinOps-Cost-USD": "0.0000123",
         "X-FinOps-Currency": "USD",
         "X-FinOps-Request-Id": "gw-1",
+        "X-FinOps-Cached-Input-Tokens": "0",
     }
+    assert cost_headers("gw-2", Decimal("1"), "USD", 1536)["X-FinOps-Cached-Input-Tokens"] == "1536"
