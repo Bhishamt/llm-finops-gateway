@@ -25,7 +25,7 @@ is called out here.
   ledger as FOCUS 1.1 rows per team, project, use case, provider, model, price book version
   and UTC day, with `x_` columns for calls and token detail.
 - `examples/assistant/`: a Streamlit page that chats through the gateway or the plugin and
-  shows the FinOps receipt next to every answer (sign in with a key, the page reads the key's
+  shows the FinOps receipt next to every answer (sign in with a key only, the page reads the key's
   team, models, budget and registered projects from the policy; team and project budget bars,
   rejections), plus a documentation Q&A panel routed through the same gateway; extra
   `[assistant]`, Dockerfile and compose service on port 8501.

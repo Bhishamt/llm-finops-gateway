@@ -14,8 +14,6 @@ Environment:
   LFG_ASSISTANT_TARGET_URL   the gateway or the LiteLLM proxy (default http://localhost:8080)
   LFG_ASSISTANT_REPORT_URL   where /v1/finops/budgets lives (default: the target URL)
   LFG_ASSISTANT_REPORT_KEY   key for the budgets API when the report needs one
-  LFG_ASSISTANT_KEYS         optional JSON map name -> API key: a "demo role" drop-down that
-                             fills the key field (the people in a demo can also paste theirs)
   LFG_ASSISTANT_HEADERS_MODE "true" when the target is a gateway in headers mode: the page asks
                              for a team name instead of a key and sends X-Team
   LFG_ASSISTANT_MODELS       model names offered when the policy allows any ("*")
@@ -25,7 +23,6 @@ Environment:
 
 from __future__ import annotations
 
-import json
 import os
 from pathlib import Path
 from typing import Any
@@ -37,12 +34,18 @@ TARGET = os.environ.get("LFG_ASSISTANT_TARGET_URL", "http://localhost:8080")
 REPORT = os.environ.get("LFG_ASSISTANT_REPORT_URL", TARGET)
 REPORT_KEY = os.environ.get("LFG_ASSISTANT_REPORT_KEY") or None
 HEADERS_MODE = os.environ.get("LFG_ASSISTANT_HEADERS_MODE", "").lower() in ("1", "true", "yes")
-DEMO_KEYS: dict[str, str] = json.loads(os.environ.get("LFG_ASSISTANT_KEYS", "{}"))
 MODELS = [
     m.strip() for m in os.environ.get("LFG_ASSISTANT_MODELS", "gpt-4.1-mini,gpt-5-mini").split(",")
 ]
 QA_MODEL = os.environ.get("LFG_ASSISTANT_QA_MODEL") or None
-ENTER_KEY = "(enter a key)"
+MAX_TOKENS = 300
+CHAT_SYSTEM = (
+    "You are a general assistant in a demo of an LLM FinOps gateway: every call you answer is "
+    "attributed to a team and a project and priced, and the receipt is shown next to your "
+    "answer. Answer the user's questions normally and briefly. If the user asks about 'this "
+    "repository', 'the gateway' or 'this project', say that the panel on the right answers "
+    "those from the documentation, and that this chat is a plain assistant."
+)
 
 
 def _docs_dir() -> Path:
@@ -110,10 +113,11 @@ def _receipt(r: Receipt) -> None:
         with st.expander("Details"):
             st.json(r.error)
         return
-    cols = st.columns(3)
-    cols[0].metric("Cost", f"{r.cost or '?'} {r.currency}")
-    cols[1].metric("Team budget", f"{r.team_budget.get('used-pct', '?')}%")
-    cols[2].metric("Project budget", f"{r.project_budget.get('used-pct', '-')}%")
+    st.markdown(
+        f"**Cost {r.cost or '?'} {r.currency}** · team budget "
+        f"{r.team_budget.get('used-pct', '?')}% · project budget "
+        f"{r.project_budget.get('used-pct', '-')}%"
+    )
     _pct_bar("Team", r.team_budget)
     _pct_bar("Project", r.project_budget)
     if r.warning:
@@ -139,23 +143,30 @@ with st.sidebar:
     if HEADERS_MODE:
         team = st.text_input("Team (X-Team)", "platform").strip() or None
     else:
-        if DEMO_KEYS:
-            role = st.selectbox("Demo role (fills the key)", [ENTER_KEY, *DEMO_KEYS])
-            if role != ENTER_KEY:
-                st.session_state["api_key"] = DEMO_KEYS[role]
-        api_key = st.text_input(
-            "API key",
-            type="password",
-            key="api_key",
-            help="A gateway lfg_ key or a LiteLLM virtual key",
-        ).strip()
+        api_key = str(st.session_state.get("api_key") or "")
         if not api_key:
-            st.info("Paste the key you were given to see what it may do.")
+            with st.form("sign_in"):
+                typed = st.text_input(
+                    "API key",
+                    type="password",
+                    help="A gateway lfg_ key or a LiteLLM virtual key",
+                )
+                if st.form_submit_button("Sign in") and typed.strip():
+                    st.session_state["api_key"] = typed.strip()
+                    st.rerun()
+            st.info("Paste the key you were given and sign in to see what it may do.")
             st.stop()
         who = _who(TARGET, api_key)
         if who is None:
             st.error(f"{TARGET} does not recognise this key.")
+            if st.button("Try another key"):
+                st.session_state.pop("api_key", None)
+                st.rerun()
             st.stop()
+        if st.button("Sign out"):
+            for k in ("api_key", "chat", "chat_key"):
+                st.session_state.pop(k, None)
+            st.rerun()
         team = who.team
         st.success(
             f"{who.key_alias or 'key'} ({who.source}), team **{team or '?'}**"
@@ -186,6 +197,8 @@ with st.sidebar:
 
     st.header("This call")
     registry = row.get("projects")
+    if not registry:
+        st.caption("This team has no project registry: any project name is accepted.")
     default_project = (who.default_project if who else None) or ""
     default_use_case = (who.default_use_case if who else None) or ""
     project_row: dict[str, Any] = {}
@@ -208,14 +221,16 @@ with st.sidebar:
     if offered == ["*"]:
         offered = MODELS
     model = st.selectbox("Model", offered)
-    max_tokens = st.slider("max_tokens", 16, 1024, 200, 16)
 
 left, right = st.columns([3, 2])
 
 with left:
-    st.subheader("Chat")
-    if "chat" not in st.session_state:
+    st.subheader("Chat with the model")
+    st.caption("A plain assistant; every answer comes with its FinOps receipt.")
+    # a new key (or team) starts a fresh conversation: no receipts of someone else's budget
+    if st.session_state.get("chat_key") != (api_key or team):
         st.session_state.chat = []
+        st.session_state.chat_key = api_key or team
     for turn in st.session_state.chat:
         with st.chat_message(turn["role"]):
             st.markdown(turn["content"])
@@ -226,7 +241,9 @@ with left:
         st.session_state.chat.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
-        history = [{"role": t["role"], "content": t["content"]} for t in st.session_state.chat]
+        history = [{"role": "system", "content": CHAT_SYSTEM}] + [
+            {"role": t["role"], "content": t["content"]} for t in st.session_state.chat
+        ]
         with st.chat_message("assistant"):
             with st.spinner("calling the model through the gateway"):
                 answer, receipt = chat(
@@ -237,7 +254,7 @@ with left:
                     team=team if HEADERS_MODE else None,
                     project=project.strip(),
                     use_case=use_case.strip() or None,
-                    max_tokens=max_tokens,
+                    max_tokens=MAX_TOKENS,
                 )
             text = (
                 answer
@@ -249,7 +266,7 @@ with left:
         st.session_state.chat.append({"role": "assistant", "content": text, "receipt": receipt})
 
 with right:
-    st.subheader("Ask about the gateway")
+    st.subheader("Ask about the gateway (from its docs)")
     st.caption(
         "Answers come from the repository's documentation, through the same gateway, charged "
         "to the project and use case selected on the left (about 40k prompt tokens a question)."
