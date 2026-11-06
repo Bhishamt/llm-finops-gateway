@@ -29,7 +29,7 @@ that installs the package into the official LiteLLM image, and `demo.sh`.
 
 | Step | LiteLLM hook | Behaviour |
 | --- | --- | --- |
-| Attribution | `async_pre_call_hook` | Team = the `team_alias` of the LiteLLM team the key belongs to; project from `X-Project` (required), use case from `X-Use-Case`. A key without a team, or a call without a project: `400 missing_attribution`, before the call |
+| Attribution | `async_pre_call_hook` | Team = the `team_alias` of the LiteLLM team the key belongs to; project from `X-Project`, use case from `X-Use-Case`, falling back to the key's metadata (`{"finops": {"project": ..., "use_case": ...}}` on `/key/generate`). A key without a team, or a call without a project from either source: `400 missing_attribution`, before the call |
 | Price | same hook | Model not in the price book: `422`, before the call. LiteLLM's own cost map is not consulted |
 | Policy | same hook | Project registry (`403 project_not_registered`, `403 use_case_not_registered`), allow-list, rate limit (`429` with `Retry-After`) and the atomic team and project budget reservations (`403 budget_exceeded`, or a warning at the warn threshold), exactly as in the gateway |
 | Settle | `async_post_call_response_headers_hook` (non-streaming) or `async_log_success_event` (streaming) | Usage from the response, cost from the price book, one ledger row and the reservation settled in one transaction |
@@ -58,6 +58,17 @@ is never pruned by the plugin.
 The team name in `policies.yaml` must equal the LiteLLM `team_alias`. LiteLLM's own key and
 team budgets keep working next to the plugin; pick one of the two as the number teams are
 told about.
+
+A key that serves one application can carry its attribution itself, so the application sends
+no header:
+
+```bash
+curl -s -X POST $LITELLM/key/generate -H "Authorization: Bearer $MASTER" \
+  -H "Content-Type: application/json" \
+  -d '{"team_id":"<team id>","key_alias":"support-bot","metadata":{"finops":{"project":"chat-assistant","use_case":"faq"}}}'
+```
+
+`X-Project` and `X-Use-Case` still win when a call sends them.
 
 ## Try it locally
 

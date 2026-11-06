@@ -8,6 +8,10 @@ is called out here.
 ## [Unreleased]
 
 ### Added
+- LiteLLM plugin: a key's metadata may carry a default project and use case
+  (`{"finops": {"project": ..., "use_case": ...}}` on `/key/generate`), used when the
+  `X-Project` / `X-Use-Case` headers are absent; the headers win when present. A service key
+  bound to one project then needs no header at all.
 - `X-FinOps-Cached-Input-Tokens` on every settled call (gateway and plugin): the prompt tokens
   the provider served from its cache and billed at the `cached_input` price, so a client can
   see why the same prompt cost less the second time.

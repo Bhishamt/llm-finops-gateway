@@ -86,6 +86,15 @@ def _usage_of(obj: Any) -> TokenUsage | None:
     )
 
 
+def _key_defaults(user_api_key_dict: Any) -> dict[str, str]:
+    """The ``finops`` block of the key's LiteLLM metadata: default project and use case."""
+    meta = getattr(user_api_key_dict, "metadata", None)
+    block = meta.get(META) if isinstance(meta, dict) else None
+    if not isinstance(block, dict):
+        return {}
+    return {k: str(v) for k, v in block.items() if k in ("project", "use_case") and v}
+
+
 def _seconds(start: Any, end: Any) -> float | None:
     """Duration between LiteLLM's start_time and end_time (datetimes or floats)."""
     try:
@@ -199,17 +208,24 @@ class FinOpsPlugin(CustomLogger):
                     "whose team_alias matches a team in policies.yaml.",
                 },
             )
-        if not headers.get("x-project"):
+        # A key may carry a default project and use case in its LiteLLM metadata
+        # (`metadata: {finops: {project: ..., use_case: ...}}` on /key/generate); the headers
+        # win when present.
+        defaults = _key_defaults(user_api_key_dict)
+        project = headers.get("x-project") or defaults.get("project")
+        use_case = headers.get("x-use-case") or defaults.get("use_case")
+        if not project:
             raise HTTPException(
                 status_code=400,
                 detail={
                     "error": "missing_attribution",
                     "missing_headers": ["X-Project"],
-                    "hint": "Set X-Project so the call can be charged back; the team comes "
-                    "from the LiteLLM key.",
+                    "hint": "Set X-Project so the call can be charged back, or give the key a "
+                    'default project in its metadata ({"finops": {"project": ...}}); '
+                    "the team comes from the LiteLLM key.",
                 },
             )
-        base = attribution_from_headers(team, headers.get("x-project"), headers.get("x-use-case"))
+        base = attribution_from_headers(team, project, use_case)
         attr = Attribution(
             team=base.team,
             project=base.project,
