@@ -19,6 +19,5 @@ streamlit run examples/assistant/app.py
 ```
 
 `examples/litellm/docker-compose.yml` runs it on port 8501 next to the LiteLLM stack; its
-`demo.sh` writes the keys it created into `.demo-keys/assistant.env`, which the page offers as
-a "demo role" drop-down (`LFG_ASSISTANT_KEYS`) next to the key field. The environment
-variables are listed at the top of `app.py`.
+`demo.sh` creates the keys in `.demo-keys/`, one file per team, to hand out to the people trying
+the page. The environment variables are listed at the top of `app.py`.

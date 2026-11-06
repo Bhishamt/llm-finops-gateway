@@ -81,9 +81,6 @@ services:
     image: lfg-assistant:dev
     ports: ["8501:8501"]
     depends_on: [litellm-finops, finops-report]
-    # demo.sh writes the keys it created here (run it once first): LFG_ASSISTANT_KEYS, the
-    # "demo role" drop-down; anyone can also paste their own key on the page.
-    env_file: ./.demo-keys/assistant.env
     environment:
       LFG_ASSISTANT_TARGET_URL: http://litellm-finops:4000
       LFG_ASSISTANT_REPORT_URL: http://finops-report:8080
