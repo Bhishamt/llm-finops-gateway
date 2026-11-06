@@ -19,14 +19,19 @@ M=${LITELLM_MASTER_KEY:-sk-lfg-master-local-only}
 CT="Content-Type: application/json"
 STATE=${STATE_DIR:-.demo-keys}; mkdir -p "$STATE"
 
-key_for() {  # team alias -> virtual key, created once and cached locally
-  local team=$1 f="$STATE/$1.key"
+team_id() {  # team alias -> LiteLLM team id, created on first use
+  local f="$STATE/$1.team"
   if [ ! -s "$f" ]; then
-    local tid
-    tid=$(curl -sf -X POST "$B/team/new" -H "Authorization: Bearer $M" -H "$CT" \
-      -d "{\"team_alias\":\"$team\"}" | python3 -c 'import sys,json;print(json.load(sys.stdin)["team_id"])')
+    curl -sf -X POST "$B/team/new" -H "Authorization: Bearer $M" -H "$CT" \
+      -d "{\"team_alias\":\"$1\"}" | python3 -c 'import sys,json;print(json.load(sys.stdin)["team_id"])' > "$f"
+  fi
+  cat "$f"
+}
+key_for() {  # team alias [key alias] [metadata JSON] -> virtual key, created once and cached locally
+  local team=$1 alias=${2:-$1-demo} meta=${3:-{\}} f="$STATE/${2:-$1}.key"
+  if [ ! -s "$f" ]; then
     curl -sf -X POST "$B/key/generate" -H "Authorization: Bearer $M" -H "$CT" \
-      -d "{\"team_id\":\"$tid\",\"key_alias\":\"$team-demo\"}" \
+      -d "{\"team_id\":\"$(team_id "$team")\",\"key_alias\":\"$alias\",\"metadata\":$meta}" \
       | python3 -c 'import sys,json;print(json.load(sys.stdin)["key"])' > "$f"
   fi
   cat "$f"
@@ -36,6 +41,8 @@ step() { printf '\n== %s\n' "$1"; }
 
 CS=$(key_for customer-support); RS=$(key_for research)
 CEO=$(key_for ceo); TL=$(key_for team-leads); EMP=$(key_for employees)
+# a service key that carries its own attribution: no X-Project needed (step 9)
+BOT=$(key_for customer-support support-bot '{"finops":{"project":"internal-tools","use_case":"triage"}}')
 # keys for the assistant container (examples/assistant), picked up on its next start
 printf 'LFG_ASSISTANT_KEYS={"ceo":"%s","team-leads":"%s","employees":"%s","customer-support":"%s","research":"%s"}\n' \
   "$CEO" "$TL" "$EMP" "$CS" "$RS" > "$STATE/assistant.env"
@@ -79,4 +86,13 @@ for r in csv.DictReader(sys.stdin):
     t=json.loads(r["Tags"])
     if t.get("project") in ("onboarding","support-bot"):
         print("    " + " | ".join([r["SubAccountId"],t["project"],t.get("use_case") or "",r["x_InputTokens"],r["x_CachedInputTokens"],r["BilledCost"]]))' 2>/dev/null || echo "    (report page not reachable at $R)"
+step "9. A service key with its project in the LiteLLM key metadata: no X-Project header needed"
+echo "   key support-bot (team customer-support, metadata finops.project=internal-tools, use_case=triage):"
+curl -s -D - -o /dev/null "$B/v1/chat/completions" -H "Authorization: Bearer $BOT" -H "$CT" -d "$SMALL" | show
+curl -s "$R/v1/finops/export.focus.csv?from=$TODAY&to=$TOMORROW&team=customer-support" | python3 -c '
+import csv,json,sys
+for r in csv.DictReader(sys.stdin):
+    t=json.loads(r["Tags"])
+    if t.get("project") == "internal-tools":
+        print("    ledger: team %s project %s use case %s calls %s cost %s" % (r["SubAccountId"], t["project"], t.get("use_case"), r["x_Calls"], r["BilledCost"]))' 2>/dev/null || true
 echo; echo "Ledger: the same tables the gateway writes; open the /finops report page against LFG_DATABASE_URL."

@@ -1,5 +1,6 @@
 """The LiteLLM plugin, exercised through its hooks without a LiteLLM server."""
 
+from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
@@ -57,8 +58,12 @@ def detail_of(exc: HTTPException) -> dict[str, Any]:
     return detail
 
 
-def key(team: str | None = "customer-support", alias: str = "cs-app-1") -> SimpleNamespace:
-    return SimpleNamespace(team_alias=team, team_id="t-1", key_alias=alias)
+def key(
+    team: str | None = "customer-support",
+    alias: str = "cs-app-1",
+    metadata: dict[str, Any] | None = None,
+) -> SimpleNamespace:
+    return SimpleNamespace(team_alias=team, team_id="t-1", key_alias=alias, metadata=metadata or {})
 
 
 def request(
@@ -106,6 +111,25 @@ async def test_missing_project_is_400_before_the_call(plugin: FinOpsPlugin) -> N
     assert detail["error"] == "missing_attribution"
     assert detail["missing_headers"] == ["X-Project"]
     assert "X-Team" not in detail["hint"]
+
+
+async def test_key_metadata_supplies_the_default_project_and_use_case(
+    plugin: FinOpsPlugin, ledger: Ledger
+) -> None:
+    bot = key(alias="cs-bot", metadata={META: {"project": "chat-assistant", "use_case": "faq"}})
+    data = await plugin.async_pre_call_hook(bot, None, request(project=None), "acompletion")
+    assert data is not None
+    await plugin.async_post_call_response_headers_hook(data, bot, response())
+    row = ledger.rows(datetime(2000, 1, 1, tzinfo=UTC), datetime(2100, 1, 1, tzinfo=UTC))[0]
+    assert (row.project, row.use_case, row.key_id) == ("chat-assistant", "faq", "cs-bot")
+    # an explicit header wins over the key's default
+    data = await plugin.async_pre_call_hook(
+        bot, None, request(project="internal-tools"), "acompletion"
+    )
+    assert data is not None
+    await plugin.async_post_call_response_headers_hook(data, bot, response())
+    rows = ledger.rows(datetime(2000, 1, 1, tzinfo=UTC), datetime(2100, 1, 1, tzinfo=UTC))
+    assert {r.project for r in rows} == {"chat-assistant", "internal-tools"}
 
 
 async def test_key_without_team_is_400(plugin: FinOpsPlugin) -> None:
