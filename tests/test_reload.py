@@ -142,6 +142,12 @@ def test_gateway_picks_up_edited_files_without_restart(
     health = rclient.get("/healthz").json()
     assert health["price_book"] == "pb" and health["policies"] == "polb"
     assert "newcomer" in [m["id"] for m in rclient.get("/v1/models").json()["data"]]
+    # the reports read the version in service as well
+    budgets = rclient.get("/v1/finops/budgets").json()
+    assert budgets["policy_version"] == "polb"
+    assert budgets["teams"][0]["allowed_models"] == ["newcomer"]
+    page = rclient.get("/finops").text
+    assert "polb" in page and "newcomer" in page and "pola" not in page
 
 
 async def test_plugin_picks_up_edited_policies(files: tuple[Path, Path]) -> None:

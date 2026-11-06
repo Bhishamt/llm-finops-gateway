@@ -75,7 +75,7 @@ curl -s -X POST $LITELLM/key/generate -H "Authorization: Bearer $MASTER" \
 `examples/litellm/docker-compose.yml` starts four services next to a PostgreSQL store for
 LiteLLM: the proxy with a probe callback only (port 4000, the "before" picture), the proxy with
 the plugin (port 4001), the gateway's report page over the plugin's ledger (port 8081) and the
-Streamlit assistant (port 8501, `examples/assistant/`: roles, receipt, docs Q&A).
+Streamlit assistant (port 8501, `examples/assistant/`: sign in with a key, receipt, docs Q&A).
 
 ```bash
 cd examples/litellm

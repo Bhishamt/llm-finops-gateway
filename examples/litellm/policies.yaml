@@ -1,6 +1,6 @@
 # Policies for the LiteLLM plugin example. Team names must match the team_alias of the LiteLLM
 # teams that issue the keys. Budgets are tiny on purpose so warn and block show up in a demo.
-version: "2026-11-05c"
+version: "2026-11-05d"
 
 defaults:
   allowed_models: ["gpt-4.1-mini", "gpt-5-mini"]
@@ -30,6 +30,7 @@ teams:
           block_at: 1.0
           enforcement: block
           reserve_output_tokens: 32
+        use_cases: ["faq", "summaries"]
       internal-tools: {}
   research:
     allowed_models: ["*"]

@@ -116,12 +116,71 @@ def chat(
     return content, receipt
 
 
-def budgets(report_url: str, api_key: str | None = None, timeout: float = 10.0) -> dict[str, Any]:
+def budgets(
+    report_url: str,
+    api_key: str | None = None,
+    team: str | None = None,
+    timeout: float = 10.0,
+    transport: httpx.BaseTransport | None = None,
+) -> dict[str, Any]:
+    """``/v1/finops/budgets``: the policy and budget state per team, with the project registry
+    of each team. ``team`` narrows a report in headers mode (``X-Team``)."""
     headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
-    with httpx.Client(timeout=timeout) as client:
+    if team:
+        headers["X-Team"] = team
+    with httpx.Client(timeout=timeout, transport=transport) as client:
         resp = client.get(f"{report_url.rstrip('/')}/v1/finops/budgets", headers=headers)
     resp.raise_for_status()
     return dict(resp.json())
+
+
+@dataclass
+class Identity:
+    """Who a key is, as far as the target can tell: the team it is bound to, its alias and
+    the default attribution a LiteLLM key may carry in its metadata."""
+
+    team: str | None
+    source: str  # "litellm" (virtual key) or "gateway" (lfg_ key)
+    key_alias: str | None = None
+    default_project: str | None = None
+    default_use_case: str | None = None
+
+
+def identity(
+    target_url: str,
+    api_key: str,
+    timeout: float = 10.0,
+    transport: httpx.BaseTransport | None = None,
+) -> Identity | None:
+    """Resolve a key against the target. A LiteLLM virtual key answers ``/key/info`` (its own
+    record) and ``/team/info``; a gateway team key answers ``/v1/finops/budgets`` with its own
+    team only. ``None`` when the target accepts neither."""
+    base = target_url.rstrip("/")
+    auth = {"Authorization": f"Bearer {api_key}"}
+    with httpx.Client(timeout=timeout, transport=transport) as client:
+        resp = client.get(f"{base}/key/info", headers=auth)
+        if resp.status_code == 200 and isinstance(resp.json().get("info"), dict):
+            info = resp.json()["info"]
+            team = info.get("team_alias")
+            if not team and info.get("team_id"):
+                t = client.get(
+                    f"{base}/team/info", params={"team_id": info["team_id"]}, headers=auth
+                )
+                if t.status_code == 200:
+                    team = (t.json().get("team_info") or {}).get("team_alias")
+            defaults = (info.get("metadata") or {}).get("finops") or {}
+            return Identity(
+                team=team,
+                source="litellm",
+                key_alias=info.get("key_alias"),
+                default_project=defaults.get("project"),
+                default_use_case=defaults.get("use_case"),
+            )
+        resp = client.get(f"{base}/v1/finops/budgets", headers=auth)
+        if resp.status_code == 200:
+            teams = resp.json().get("teams") or []
+            return Identity(team=teams[0]["team"] if len(teams) == 1 else None, source="gateway")
+    return None
 
 
 DOC_GLOBS = ("README.md", "docs/*.md", "docs/adr/*.md")

@@ -517,3 +517,15 @@ def test_http_project_budget_in_headers_and_body(
         assert r.status_code == 403
         assert r.json()["detail"]["error"] == "project_not_registered"
         assert len(fake_provider.calls) == 1
+
+        # the budgets report lists the registry with each project's effective policy
+        teams = {t["team"]: t for t in c.get("/v1/finops/budgets").json()["teams"]}
+        projects = {p["project"]: p for p in teams["product"]["projects"]}
+        assert set(projects) == {"chat-assistant", "internal-tools", "narrow"}
+        assert projects["chat-assistant"]["use_cases"] == ["faq", "summaries"]
+        assert projects["chat-assistant"]["budget"]["limit_usd"] == "0.02"
+        assert projects["chat-assistant"]["budget"]["spent_usd"] != "0"
+        assert projects["internal-tools"]["budget"] is None
+        assert projects["narrow"]["allowed_models"] == ["free"]
+        assert projects["internal-tools"]["allowed_models"] == ["*"]
+        assert teams["open"]["projects"] is None
