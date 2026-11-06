@@ -83,11 +83,11 @@ narrower and FinOps-first. The differences that matter for a finance or platform
 
 | | llm-finops-gateway | Typical LLM gateways (LiteLLM, Portkey, Bifrost, Cloudflare AI Gateway) |
 | --- | --- | --- |
-| Cost owner | Mandatory `team` / `project` / `use_case` tags; untagged calls are rejected | Spend tied to an API key or "virtual key"; mapping keys to cost centres is manual |
+| Cost owner | Mandatory `team` / `project` / `use_case` tags; untagged calls are rejected | Spend tied to a key, team or user; a project or use-case dimension is an optional tag, not a precondition |
 | Price list | Versioned YAML in git; every ledger row records the version it was priced with, so last quarter's chargeback can be recomputed | Built-in price table updated with the software; historical cost is whatever was computed at the time |
-| Unknown model | Rejected before the upstream call | Usually forwarded and logged with zero or missing cost |
+| Unknown model | Rejected before the upstream call | Usually forwarded and logged with zero or missing cost; in LiteLLM a model priced at zero also skips the budget checks |
 | Who is calling | Team-bound keys, hashes in git, `key_id` on every ledger row and trace | Virtual keys in a database or admin UI |
-| Budgets | Per team, warn and block thresholds, warn-only mode, atomic reservation, declared in YAML and reviewed in PRs | Per key, hard cap, configured in an admin UI or API |
+| Budgets | Per team, warn and block thresholds, warn-only mode, atomic reservation, declared in YAML and reviewed in PRs | Per key, team or user, configured in an admin UI or API; LiteLLM also reserves the estimated cost before the call |
 | Evaluation | Replay and regression scoring on recorded calls (roadmap) | Out of scope; separate observability product |
 | Routing, caching, fallbacks | Out of scope; run this behind a router if you need them | Core feature |
 
