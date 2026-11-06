@@ -51,8 +51,8 @@ deploy/azure/      main.bicep + openai-role.bicep + keys.sh + db_roles.py + READ
 docs/database.md   ledger engines, schema, PostgreSQL roles (lfgadmin/lfg_app/lfg_reporting), operations
 docs/              architecture.md, deployment.md, azure-setup.md, testing-plan.md, comparison.md,
                    litellm.md, adr/0001..0024
-tests/             one test module per source module, 231 tests (+3 PostgreSQL tests when LFG_TEST_DATABASE_URL is set;
-                   the 11 LiteLLM plugin tests skip without the [litellm] extra), FakeProvider in conftest.py
+tests/             one test module per source module, 236 tests (+3 PostgreSQL tests when LFG_TEST_DATABASE_URL is set;
+                   the 15 LiteLLM plugin tests skip without the [litellm] extra), FakeProvider in conftest.py
 ```
 
 ## Behaviour that must not regress
