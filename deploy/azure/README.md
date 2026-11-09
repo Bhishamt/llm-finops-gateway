@@ -126,6 +126,48 @@ open $URL/finops            # sign in with the finops key
 - Tear down: `az deployment group delete` does not remove resources; delete the resource
   group, or the individual resources, when done.
 
+## The LiteLLM direction: proxy, plugin, report, assistant
+
+`litellm.bicep` deploys three more Container Apps into the same environment, for a team that
+runs LiteLLM and wants the FinOps rules inside it (ADR-0019, ADR-0024):
+
+| App | Image | What it serves |
+| --- | --- | --- |
+| `lfg-litellm` | `examples/litellm/Dockerfile` (LiteLLM with the plugin installed) | the proxy on `/v1/...`, the LiteLLM dashboard on `/ui`, LiteLLM metrics plus `lfg_*` on `/metrics/` |
+| `lfg-report` | the gateway image | `/finops` over the shared ledger, in `api_key` mode, plus the dashboard-plugin endpoints |
+| `lfg-assistant` | `examples/assistant/Dockerfile` | the Streamlit page people sign in to with a LiteLLM key |
+
+It reuses what `main.bicep` created: the environment, the identity (AcrPull), the registry, the
+PostgreSQL server (a new `litellm` database for LiteLLM's own tables; the plugin and the report
+write the gateway's ledger through the `database-url` secret) and the Key Vault. The config
+files live on an Azure Files share `finops-config` mounted read-only at `/config` in the proxy
+and the report; the LiteLLM master and salt keys are created once as Key Vault secrets
+`litellm-master-key` and `litellm-salt-key`.
+
+```bash
+RG=rg-llm-finops-gateway-dev ACR=lfgacr1325 deploy/azure/litellm-deploy.sh
+# builds the three images, reads the secrets, deploys litellm.bicep, uploads the config files,
+# restarts the proxy once (LiteLLM reads its own config at startup), creates the demo teams and
+# keys with examples/litellm/demo.sh; the keys land in deploy/azure/.demo-keys/
+```
+
+Editing a budget afterwards is one command; the proxy and the report pick it up on the next
+call, no restart:
+
+```bash
+# edit examples/litellm/policies.yaml (or config/pricing.yaml), then
+RG=rg-llm-finops-gateway-dev deploy/azure/push-config.sh
+```
+
+A key that leaks spends on your Azure OpenAI account until its team's budget blocks it, so keep
+the demo budgets tiny and give warn-only teams a second net on the LiteLLM side:
+`POST /key/update {"key": "...", "max_budget": 2}` with the master key. Delete the demo keys
+(`/key/delete`) and scale the apps to zero, or delete them, when the demo is over.
+
+The dashboard plugin needs HTTPS for its session cookie; Container Apps ingress provides it.
+Cost: about 0.5 USD a day on top of the gateway (three small apps on the consumption plan, the
+proxy with 0.5 vCPU / 1 GiB; the database, registry and share are shared), plus the model calls.
+
 ## What to add for production
 
 | Need | Add |

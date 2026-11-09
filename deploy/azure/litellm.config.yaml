@@ -1,0 +1,28 @@
+# LiteLLM proxy config for the Azure deployment (deploy/azure/litellm.bicep). push-config.sh
+# fills REPORT_URL and uploads it to the finops-config share as litellm.yaml. Same shape as
+# examples/litellm/config.plugin.yaml: Azure OpenAI deployments, the FinOps plugin as a callback,
+# the report page registered as a dashboard plugin.
+model_list:
+  - model_name: gpt-4.1-mini
+    litellm_params:
+      model: azure/gpt-4.1-mini-dev
+      api_base: os.environ/AZURE_API_BASE
+      api_key: os.environ/AZURE_API_KEY
+      api_version: os.environ/AZURE_API_VERSION
+  - model_name: gpt-5-mini
+    litellm_params:
+      model: azure/gpt-5-mini-dev
+      api_base: os.environ/AZURE_API_BASE
+      api_key: os.environ/AZURE_API_KEY
+      api_version: os.environ/AZURE_API_VERSION
+
+litellm_settings:
+  callbacks: [prometheus, llm_finops_gateway.litellm_plugin.plugin]
+  drop_params: true
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  plugins:
+    - name: finops
+      display_name: FinOps
+      url: REPORT_URL
