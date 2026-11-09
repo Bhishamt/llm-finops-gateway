@@ -47,7 +47,8 @@ demo/              run_demo.py (simulated or live), policies.yaml (tiny budgets)
 examples/          OpenAI SDK examples (python/chat.py, typescript/chat.ts); litellm/ compose stack,
                    Dockerfile and demo.sh for the plugin; assistant/ Streamlit page (key sign-in, receipt,
                    docs Q&A through the gateway); grafana/ dashboard JSON
-deploy/azure/      main.bicep + openai-role.bicep + keys.sh + db_roles.py + README: Container Apps + PostgreSQL + Key Vault (keys.yaml there is git-ignored)
+deploy/azure/      main.bicep + openai-role.bicep + keys.sh + db_roles.py + README: Container Apps + PostgreSQL + Key Vault (keys.yaml there is git-ignored);
+                   litellm.bicep + litellm-deploy.sh + push-config.sh + litellm.config.yaml: the LiteLLM direction next to it
 docs/database.md   ledger engines, schema, PostgreSQL roles (lfgadmin/lfg_app/lfg_reporting), operations
 docs/              architecture.md, deployment.md, azure-setup.md, testing-plan.md, comparison.md,
                    litellm.md, adr/0001..0024

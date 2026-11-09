@@ -32,3 +32,4 @@ examples/typescript/node_modules/
 # Azure deployment inputs with key hashes (generated per environment)
 deploy/azure/keys.yaml
 .demo-keys/
+deploy/azure/.litellm-outputs.json
