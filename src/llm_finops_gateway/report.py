@@ -332,6 +332,13 @@ def _amt(value: Decimal | str | None, extra_class: str = "") -> str:
     )
 
 
+def _enforcement_note(warn_pct: str, block_pct: str, enforcement: str) -> str:
+    """What happens at the thresholds, in words: a warn-only team is never blocked."""
+    if enforcement == "warn":
+        return f"warn from {_e(warn_pct)} %, warn only above {_e(block_pct)} %, never blocked"
+    return f"warn from {_e(warn_pct)} %, blocked at {_e(block_pct)} %"
+
+
 def _budget_cells(row: TeamBudgetRow) -> str:
     b = row.budget
     if b is None:
@@ -343,7 +350,7 @@ def _budget_cells(row: TeamBudgetRow) -> str:
         f"{_amt(b.spent_usd)}{_amt(b.limit_usd)}"
         f'<td data-v="{_e(b.used_pct)}">{bar}{_e(b.used_pct)} %</td>'
         f'<td data-v="{b.level}"><span class="level {b.level}">{b.level}</span> '
-        f"<small>warn {_e(b.warn_at_pct)} % / block {_e(b.block_at_pct)} %, {b.enforcement}</small></td>"
+        f"<small>{_enforcement_note(b.warn_at_pct, b.block_at_pct, b.enforcement)}</small></td>"
     )
 
 
@@ -353,7 +360,7 @@ def _policy_table(rows: list[PolicyRow]) -> str:
         f"{_amt(r.monthly)}"
         f'<td class="num">{_e(r.warn_pct) if r.warn_pct else "-"}</td>'
         f'<td class="num">{_e(r.block_pct) if r.block_pct else "-"}</td>'
-        f"<td>{_e(r.enforcement) if r.enforcement else '-'}</td>"
+        f"<td>{'warn only (never blocked)' if r.enforcement == 'warn' else _e(r.enforcement) if r.enforcement else '-'}</td>"
         f'<td class="num">{r.reserve_output_tokens if r.reserve_output_tokens else "-"}</td>'
         f'<td class="num">{r.requests_per_minute if r.requests_per_minute else "-"}</td></tr>'
         for r in rows

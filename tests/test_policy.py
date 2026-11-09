@@ -341,6 +341,10 @@ def test_http_budget_report(pclient: TestClient, ledger: Ledger) -> None:
     assert teams["adhoc-team"]["budget"]["limit_usd"] == "10"  # defaults
     assert teams["platform"]["allowed_models"] == ["*"]
     assert teams["bursty"]["requests_per_minute"] == 2
+    # the report page says in words what the thresholds do: a warn-only team is never blocked
+    page = pclient.get("/finops").text
+    assert "warn from 50 %, warn only above 100 %, never blocked" in page
+    assert "blocked at 100 %" in page and "warn only (never blocked)" in page
 
 
 def test_http_healthz_reports_policy_version(pclient: TestClient) -> None:
