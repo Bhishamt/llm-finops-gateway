@@ -45,7 +45,16 @@ the browser's local storage.
 FinOps Open Cost and Usage Specification (FOCUS) format, one row per team, project, use case,
 provider, model, price book version and UTC day, with the mandatory FOCUS 1.1 columns and
 `x_` columns for token detail (ADR-0023); `llm-finops-gateway ledger export --from ... --to ...`
-writes the same file from the command line for scheduled loads into a FOCUS dataset.
+writes the same file from the command line for scheduled loads into a FOCUS dataset. Four rows
+of an export, columns trimmed (`Tags` holds the project and use case as JSON):
+
+| ChargePeriodStart | SubAccountId | Tags | ResourceId | ConsumedQuantity | x_Calls | x_CachedInputTokens | BilledCost |
+| --- | --- | --- | --- | ---: | ---: | ---: | ---: |
+| 2026-11-05 | customer-support | project=chat-assistant, use_case=faq | gpt-4.1-mini | 2079 | 7 | 0 | 0.0010284 |
+| 2026-11-05 | customer-support | project=chat-assistant, use_case=summaries | gpt-4.1-mini | 3033 | 1 | 0 | 0.0012144 |
+| 2026-11-05 | employees | project=onboarding, use_case=faq | gpt-4.1-mini | 7326 | 13 | 0 | 0.0031848 |
+| 2026-11-05 | ceo | project=board-briefing, use_case=docs-qa | gpt-5-mini | 227 | 3 | 0 | 0.00037175 |
+
 `GET /v1/finops/summary.csv` returns the chargeback rows as CSV with the same access rule, and
 the ledger database has a read-only role (`lfg_reporting` on the Azure deployment,
 [database.md](database.md)). That is the whole contract: any spreadsheet or BI tool that can
@@ -73,7 +82,8 @@ Automate flow that sends mail, or use an Azure Monitor action group. Test any ch
 ## What belongs where
 
 - Core (this repository): the access rule, the HTML page, CSV and JSON, the ledger schema.
-- Later in core: per-user identity on the report through OIDC groups, a FOCUS-format export,
-  a Grafana dashboard for the Prometheus metrics (operational view, not chargeback).
+- Also in core: the FOCUS export, the Grafana dashboard for the Prometheus metrics
+  (operational view, not chargeback), the report inside the LiteLLM dashboard.
+- Later in core: per-user identity on the report through OIDC groups.
 - Enterprise layer: the BI model (whatever the tool) with row-level security and SSO,
   customer branding, approval workflows for budget changes, ERP exports.

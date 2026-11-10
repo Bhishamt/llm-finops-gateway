@@ -19,20 +19,25 @@ M=${LITELLM_MASTER_KEY:-sk-lfg-master-local-only}
 CT="Content-Type: application/json"
 STATE=${STATE_DIR:-.demo-keys}; mkdir -p "$STATE"
 
-team_id() {  # team alias -> LiteLLM team id, created on first use
-  local f="$STATE/$1.team"
+team_id() {  # team alias -> LiteLLM team id, created on first use (nothing cached on failure)
+  local f="$STATE/$1.team" tid
   if [ ! -s "$f" ]; then
-    curl -sf -X POST "$B/team/new" -H "Authorization: Bearer $M" -H "$CT" \
-      -d "{\"team_alias\":\"$1\"}" | python3 -c 'import sys,json;print(json.load(sys.stdin)["team_id"])' > "$f"
+    tid=$(curl -sf -X POST "$B/team/new" -H "Authorization: Bearer $M" -H "$CT" \
+      -d "{\"team_alias\":\"$1\"}" | python3 -c 'import sys,json;print(json.load(sys.stdin)["team_id"])')
+    [ -n "$tid" ] || { echo "could not create team $1 on $B" >&2; exit 1; }
+    echo "$tid" > "$f"
   fi
   cat "$f"
 }
 key_for() {  # team alias [key alias] [metadata JSON] -> virtual key, created once and cached locally
-  local team=$1 alias=${2:-$1-demo} meta=${3:-{\}} f="$STATE/${2:-$1}.key"
+  local team=$1 alias=${2:-$1-demo} meta=${3:-{\}} f="$STATE/${2:-$1}.key" tid key
   if [ ! -s "$f" ]; then
-    curl -sf -X POST "$B/key/generate" -H "Authorization: Bearer $M" -H "$CT" \
-      -d "{\"team_id\":\"$(team_id "$team")\",\"key_alias\":\"$alias\",\"metadata\":$meta}" \
-      | python3 -c 'import sys,json;print(json.load(sys.stdin)["key"])' > "$f"
+    tid=$(team_id "$team") || exit 1
+    key=$(curl -sf -X POST "$B/key/generate" -H "Authorization: Bearer $M" -H "$CT" \
+      -d "{\"team_id\":\"$tid\",\"key_alias\":\"$alias\",\"metadata\":$meta}" \
+      | python3 -c 'import sys,json;print(json.load(sys.stdin)["key"])')
+    [ -n "$key" ] || { echo "could not create key $alias on $B" >&2; exit 1; }
+    echo "$key" > "$f"
   fi
   cat "$f"
 }

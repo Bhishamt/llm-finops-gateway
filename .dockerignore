@@ -15,3 +15,6 @@ deploy
 grafana
 observability
 demo/out
+# the assistant image (examples/assistant/Dockerfile) needs these two; the gateway image copies only what it names
+!examples/assistant
+!docs

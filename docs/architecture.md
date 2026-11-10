@@ -38,7 +38,7 @@ the actual cost and the ledger row in one transaction; step 6 re-reads the count
 response reflects the state including this call. Prometheus counters and the OpenTelemetry
 span are updated along the way (`metrics.py`, `telemetry.py`).
 
-A rendered version of this flow is in `images/architecture.svg`. Around the request path:
+A rendered version of this flow is in `images/architecture.svg`; the same rules inside a LiteLLM proxy (ADR-0019) are drawn in `images/architecture-litellm.svg`. Around the request path:
 `/finops` (HTML), `/v1/finops/summary(.csv)` and `/v1/finops/budgets` read the ledger behind one
 access rule (ADR-0016); `/metrics` and OpenTelemetry spans are written along the way; webhook
 alerts fire on budget warn/block and upstream failures (ADR-0017); `pricing sync` keeps the price

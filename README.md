@@ -29,7 +29,14 @@ Four rules are built in and intentional (see the [ADRs](docs/adr/)):
   traces.
 - The budget is **reserved before the call**, settled after, released on failure.
 
+It runs in two shapes. Standalone, the gateway is the front door your applications call:
+
 ![Request path](docs/images/architecture.svg)
+
+Already on LiteLLM? The same rules run inside the LiteLLM proxy as a callback plugin, with
+the same price book, policy file, ledger and reports; no second proxy (ADR-0019):
+
+![The FinOps plugin inside LiteLLM](docs/images/architecture-litellm.svg)
 
 ## What it looks like
 
@@ -66,6 +73,8 @@ own `/metrics/` endpoint, so the Grafana dashboard works unchanged. The report p
 inside the LiteLLM dashboard as a plugin (ADR-0024). Guide: [docs/litellm.md](docs/litellm.md),
 example stack: [examples/litellm/](examples/litellm/).
 
+![The report page inside the LiteLLM dashboard](docs/images/litellm-dashboard-finops.png)
+
 ## Try it from a browser
 
 `examples/assistant/` is a small Streamlit page: sign in with a key, and the page shows what
@@ -77,6 +86,8 @@ traffic is attributed too. `pip install "llm-finops-gateway[assistant]"` and
 `streamlit run examples/assistant/app.py`, or the `assistant` service of the LiteLLM compose
 stack on port 8501.
 
+![The assistant example](docs/images/assistant.png)
+
 ## Why not LiteLLM, Portkey or an API-management gateway?
 
 Those are good routing gateways and you may already run one. This project is deliberately
@@ -84,11 +95,11 @@ narrower and FinOps-first. The differences that matter for a finance or platform
 
 | | llm-finops-gateway | Typical LLM gateways (LiteLLM, Portkey, Bifrost, Cloudflare AI Gateway) |
 | --- | --- | --- |
-| Cost owner | Mandatory `team` / `project` / `use_case` tags; untagged calls are rejected | Spend tied to a key, team or user; a project or use-case dimension is an optional tag, not a precondition |
+| Cost owner | Mandatory `team` / `project` / `use_case` tags; untagged calls are rejected | Spend tied to an API key or "virtual key"; mapping keys to cost centres is manual |
 | Price list | Versioned YAML in git; every ledger row records the version it was priced with, so last quarter's chargeback can be recomputed | Built-in price table updated with the software; historical cost is whatever was computed at the time |
-| Unknown model | Rejected before the upstream call | Usually forwarded and logged with zero or missing cost; in LiteLLM a model priced at zero also skips the budget checks |
+| Unknown model | Rejected before the upstream call | Usually forwarded and logged with zero or missing cost |
 | Who is calling | Team-bound keys, hashes in git, `key_id` on every ledger row and trace | Virtual keys in a database or admin UI |
-| Budgets | Per team, warn and block thresholds, warn-only mode, atomic reservation, declared in YAML and reviewed in PRs | Per key, team or user, configured in an admin UI or API; LiteLLM also reserves the estimated cost before the call |
+| Budgets | Per team, warn and block thresholds, warn-only mode, atomic reservation, declared in YAML and reviewed in PRs | Per key, hard cap, configured in an admin UI or API |
 | Evaluation | Replay and regression scoring on recorded calls (roadmap) | Out of scope; separate observability product |
 | Routing, caching, fallbacks | Out of scope; run this behind a router if you need them | Core feature |
 
@@ -399,6 +410,29 @@ filters rows, selects teams (all or a subset), switches the display currency
 effective policy per team and the price book from their version links. How spreadsheets and BI
 tools read the same data is in [docs/reporting.md](docs/reporting.md).
 
+### FOCUS export for FinOps datasets
+
+The ledger exports in the FinOps Open Cost and Usage Specification (FOCUS 1.1) format, one row
+per team, project, use case, provider, model, price book version and UTC day, so LLM spend lands
+in the same dataset as the cloud bill (ADR-0023):
+
+```bash
+curl -s "$GW/v1/finops/export.focus.csv?from=2026-11-01&to=2026-12-01" -H "Authorization: Bearer $FINOPS_KEY"
+llm-finops-gateway ledger export --from 2026-11-01 --to 2026-12-01 --billing-account contoso --out focus-2026-11.csv
+```
+
+The mandatory FOCUS columns are filled (`BilledCost`, `ChargePeriodStart`, `ProviderName`,
+`ServiceName`, `SubAccountId` = team, `ResourceId` = model, `Tags` = project and use case,
+`ConsumedQuantity` in tokens) and `x_` columns carry the token detail. Four rows of a real
+export, columns trimmed:
+
+| ChargePeriodStart | SubAccountId | Tags | ResourceId | ConsumedQuantity | x_Calls | x_CachedInputTokens | BilledCost |
+| --- | --- | --- | --- | ---: | ---: | ---: | ---: |
+| 2026-11-05 | customer-support | project=chat-assistant, use_case=faq | gpt-4.1-mini | 2079 | 7 | 0 | 0.0010284 |
+| 2026-11-05 | customer-support | project=chat-assistant, use_case=summaries | gpt-4.1-mini | 3033 | 1 | 0 | 0.0012144 |
+| 2026-11-05 | employees | project=onboarding, use_case=faq | gpt-4.1-mini | 7326 | 13 | 0 | 0.0031848 |
+| 2026-11-05 | ceo | project=board-briefing, use_case=docs-qa | gpt-5-mini | 227 | 3 | 0 | 0.00037175 |
+
 ## Configuration
 
 Environment variables (prefix `LFG_`; a `.env` file is read if present):
@@ -465,9 +499,10 @@ Prometheus metrics below.
 [`grafana/llm-finops-gateway.json`](grafana/llm-finops-gateway.json) is a ready-made dashboard
 for the `/metrics` endpoint: spend, calls served and rejected, budget used per team with the
 warn and block thresholds, spend rate by team, requests by outcome, tokens, upstream latency
-p50/p95 by provider, and a spend table by team, project and model. Import it into Grafana or
-Azure Managed Grafana and pick the Prometheus data source that scrapes the gateway, or run it
-locally against a gateway on port 8080:
+p50/p95 by provider, and a spend table by team, project and model. The LiteLLM plugin publishes
+the same `lfg_*` series on LiteLLM's `/metrics/`, so the dashboard shows LiteLLM traffic
+unchanged. Import it into Grafana or Azure Managed Grafana and pick the Prometheus data source
+that scrapes the gateway, or run it locally against a gateway on port 8080:
 
 ```bash
 docker compose -f docker-compose.observability.yml up -d   # Prometheus + Grafana, dashboard provisioned
@@ -497,7 +532,10 @@ Database for PostgreSQL for the ledger (SQLite on Azure Files as the cheap fallb
 Analytics, a Key Vault for the secrets, and the image built in the cloud with `az acr build`.
 About 1.2 USD a day for an always-on demo; what to add for production is listed there (Entra
 ID in front of `/finops`, private networking). The ledger schema and the database roles are
-in [docs/database.md](docs/database.md).
+in [docs/database.md](docs/database.md). The LiteLLM direction deploys next to it with
+`deploy/azure/litellm.bicep` and `litellm-deploy.sh`: the proxy with the plugin, the report page
+as a dashboard plugin and the assistant, with the config files on an Azure Files share that
+`push-config.sh` updates and the hot reload picks up.
 
 ## Docker
 
@@ -526,7 +564,7 @@ Architecture notes: [docs/architecture.md](docs/architecture.md). Operations:
   evaluation replay and regression scoring ([ADR-0009](docs/adr/0009-evaluation-replay.md),
   design proposed).
 - **Then**: token budgets and amortised or shared-pool pricing for self-hosted models;
-  FOCUS-format export of the ledger; schema migrations (Alembic) instead of `create_all`.
+  schema migrations (Alembic) instead of `create_all`.
 - **Later**: PII and content hooks; shared rate limits (Redis) for multi-replica deployments;
   Helm chart; Anthropic Messages adapter and Claude in Microsoft Foundry.
 
