@@ -1,6 +1,6 @@
 # Policies for the LiteLLM plugin example. Team names must match the team_alias of the LiteLLM
 # teams that issue the keys. Budgets are tiny on purpose so warn and block show up in a demo.
-version: "2026-11-05g"
+version: "2026-11-09b"
 
 defaults:
   allowed_models: ["gpt-4.1-mini", "gpt-5-mini"]
@@ -36,7 +36,7 @@ teams:
   research:
     allowed_models: ["*"]
     budget:
-      monthly_usd: 0.002
+      monthly_usd: 0.03
       warn_at: 0.5
       block_at: 1.0
       enforcement: warn
@@ -48,10 +48,13 @@ teams:
         use_cases: ["summary", "docs-qa"]
   # Roles for the assistant example (examples/assistant): three LiteLLM teams, three keys. Every
   # team keeps a registry, the way an approved budget request would land here, so the assistant
-  # offers the projects and use cases from lists.
+  # offers the projects and use cases from lists. A question costs about 0.006 USD on
+  # gpt-4.1-mini (the docs are the prompt, 0.002 once cached): employees runs out after about
+  # ten questions, team-leads after forty, ceo never; research is warn-only and keeps answering
+  # past 100%.
   ceo:
     allowed_models: ["*"]
-    budget: { monthly_usd: 2, warn_at: 0.8, block_at: 1.0, enforcement: block }
+    budget: { monthly_usd: 5, warn_at: 0.8, block_at: 1.0, enforcement: block }
     projects:
       board-briefing:
         use_cases: ["summary", "docs-qa"]
@@ -59,11 +62,11 @@ teams:
         use_cases: ["research", "drafting"]
   team-leads:
     allowed_models: ["gpt-4.1-mini", "gpt-5-mini"]
-    budget: { monthly_usd: 0.005, warn_at: 0.5, block_at: 1.0, enforcement: block, reserve_output_tokens: 64 }
+    budget: { monthly_usd: 0.25, warn_at: 0.5, block_at: 1.0, enforcement: block, reserve_output_tokens: 64 }
     projects:
       support-bot:
         use_cases: ["eval", "faq"]
-        budget: { monthly_usd: 0.02, warn_at: 0.5, block_at: 1.0, enforcement: block, reserve_output_tokens: 64 }
+        budget: { monthly_usd: 0.1, warn_at: 0.5, block_at: 1.0, enforcement: block, reserve_output_tokens: 64 }
       team-reports:
         use_cases: ["summary", "docs-qa"]
   employees:

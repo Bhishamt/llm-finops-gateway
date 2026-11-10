@@ -1,9 +1,10 @@
 """A small chat assistant that shows what the gateway (or the LiteLLM plugin) does with every
 call: sign in with an API key, and the page reads back who that key is (team, allowed models,
 rate limit, budget, registered projects and use cases) from the same policy the gateway
-enforces; pick a project and a use case, send a prompt, and read the receipt next to the
-answer. The right-hand panel answers questions about the project from its documentation,
-through the same gateway, so that traffic is attributed too.
+enforces; pick a project and a use case, ask about the gateway, and read the receipt next to
+the answer. The answers come from the repository's documentation, sent as the system prompt
+through the same gateway, so the demo traffic is attributed and priced like any other call,
+and the second question on shows the provider's prompt cache at work.
 
     pip install "llm-finops-gateway[assistant]"
     LFG_ASSISTANT_TARGET_URL=http://localhost:4001 \\
@@ -17,7 +18,7 @@ Environment:
   LFG_ASSISTANT_HEADERS_MODE "true" when the target is a gateway in headers mode: the page asks
                              for a team name instead of a key and sends X-Team
   LFG_ASSISTANT_MODELS       model names offered when the policy allows any ("*")
-  LFG_ASSISTANT_QA_MODEL     model for the Q&A panel (default: the first allowed model)
+  LFG_ASSISTANT_QA_MODEL     model for the answers (default: the model picked on the page)
   LFG_ASSISTANT_DOCS_DIR     repository root with README.md and docs/ (default: autodetect)
 """
 
@@ -38,14 +39,7 @@ MODELS = [
     m.strip() for m in os.environ.get("LFG_ASSISTANT_MODELS", "gpt-4.1-mini,gpt-5-mini").split(",")
 ]
 QA_MODEL = os.environ.get("LFG_ASSISTANT_QA_MODEL") or None
-MAX_TOKENS = 300
-CHAT_SYSTEM = (
-    "You are a general assistant in a demo of an LLM FinOps gateway: every call you answer is "
-    "attributed to a team and a project and priced, and the receipt is shown next to your "
-    "answer. Answer the user's questions normally and briefly. If the user asks about 'this "
-    "repository', 'the gateway' or 'this project', say that the panel on the right answers "
-    "those from the documentation, and that this chat is a plain assistant."
-)
+MAX_TOKENS = 400
 
 
 def _docs_dir() -> Path:
@@ -222,72 +216,46 @@ with st.sidebar:
         offered = MODELS
     model = st.selectbox("Model", offered)
 
-left, right = st.columns([3, 2])
-
-with left:
-    st.subheader("Chat with the model")
-    st.caption("A plain assistant; every answer comes with its FinOps receipt.")
-    # a new key (or team) starts a fresh conversation: no receipts of someone else's budget
-    if st.session_state.get("chat_key") != (api_key or team):
-        st.session_state.chat = []
-        st.session_state.chat_key = api_key or team
-    for turn in st.session_state.chat:
-        with st.chat_message(turn["role"]):
-            st.markdown(turn["content"])
-            if turn.get("receipt") is not None:
-                _receipt(turn["receipt"])
-    prompt = st.chat_input("Ask the assistant something")
-    if prompt:
-        st.session_state.chat.append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.markdown(prompt)
-        history = [{"role": "system", "content": CHAT_SYSTEM}] + [
-            {"role": t["role"], "content": t["content"]} for t in st.session_state.chat
-        ]
-        with st.chat_message("assistant"):
-            with st.spinner("calling the model through the gateway"):
-                answer, receipt = chat(
-                    TARGET,
-                    api_key,
-                    model,
-                    history,
-                    team=team if HEADERS_MODE else None,
-                    project=project.strip(),
-                    use_case=use_case.strip() or None,
-                    max_tokens=MAX_TOKENS,
-                )
-            text = (
-                answer
-                if answer is not None
-                else "_(the call was rejected before the model was called)_"
-            )
-            st.markdown(text)
-            _receipt(receipt)
-        st.session_state.chat.append({"role": "assistant", "content": text, "receipt": receipt})
-
-with right:
-    st.subheader("Ask about the gateway (from its docs)")
-    st.caption(
-        "Answers come from the repository's documentation, through the same gateway, charged "
-        "to the project and use case selected on the left (about 40k prompt tokens a question)."
-    )
-    question = st.text_area("Question", placeholder="How is the budget reserved before a call?")
-    if st.button("Ask") and question.strip():
-        ctx = _context(str(_docs_dir()))
-        with st.spinner("reading the docs"):
+st.subheader("Ask about the gateway")
+st.caption(
+    "Answers come from the repository's documentation, through the gateway, charged to the "
+    "project and use case above. The documentation is the same prompt prefix every time, so "
+    "from the second question on the receipt shows cached input tokens at the lower price."
+)
+# a new key (or team) starts a fresh conversation: no receipts of someone else's budget
+if st.session_state.get("chat_key") != (api_key or team):
+    st.session_state.chat = []
+    st.session_state.chat_key = api_key or team
+for turn in st.session_state.chat:
+    with st.chat_message(turn["role"]):
+        st.markdown(turn["content"])
+        if turn.get("receipt") is not None:
+            _receipt(turn["receipt"])
+prompt = st.chat_input("How is the budget reserved before a call?")
+if prompt:
+    st.session_state.chat.append({"role": "user", "content": prompt})
+    with st.chat_message("user"):
+        st.markdown(prompt)
+    history = [{"role": "system", "content": QA_SYSTEM + _context(str(_docs_dir()))}] + [
+        {"role": t["role"], "content": t["content"]} for t in st.session_state.chat
+    ]
+    with st.chat_message("assistant"):
+        with st.spinner("reading the docs through the gateway"):
             answer, receipt = chat(
                 TARGET,
                 api_key,
                 QA_MODEL or model,
-                [
-                    {"role": "system", "content": QA_SYSTEM + ctx},
-                    {"role": "user", "content": question.strip()},
-                ],
+                history,
                 team=team if HEADERS_MODE else None,
                 project=project.strip(),
                 use_case=use_case.strip() or None,
-                max_tokens=600,
+                max_tokens=MAX_TOKENS,
             )
-        if answer is not None:
-            st.markdown(answer)
+        text = (
+            answer
+            if answer is not None
+            else "_(the call was rejected before the model was called)_"
+        )
+        st.markdown(text)
         _receipt(receipt)
+    st.session_state.chat.append({"role": "assistant", "content": text, "receipt": receipt})

@@ -58,19 +58,22 @@ def test_receipt_unwraps_gateway_and_litellm_error_shapes() -> None:
     assert plain.error == {"message": "No price configured"}
 
 
-def test_docs_context_lists_files_in_order(tmp_path: Path) -> None:
+def test_docs_context_lists_the_selected_files_in_order(tmp_path: Path) -> None:
     (tmp_path / "docs" / "adr").mkdir(parents=True)
     (tmp_path / "README.md").write_text("# readme")
-    (tmp_path / "docs" / "b.md").write_text("bee")
-    (tmp_path / "docs" / "a.md").write_text("ay")
+    (tmp_path / "docs" / "litellm.md").write_text("lite")
+    (tmp_path / "docs" / "architecture.md").write_text("arch")
+    (tmp_path / "docs" / "other.md").write_text("skip")
     (tmp_path / "docs" / "adr" / "0001-x.md").write_text("adr")
     ctx = finops_client.docs_context(tmp_path)
     assert (
-        ctx.index("===== README.md") < ctx.index("===== docs/a.md") < ctx.index("===== docs/b.md")
+        ctx.index("===== README.md")
+        < ctx.index("===== docs/architecture.md")
+        < ctx.index("===== docs/litellm.md")
     )
-    assert "===== docs/adr/0001-x.md" in ctx and ctx.endswith("adr")
-    # a header per file: README (32 chars) and docs/a.md (26) fit in 60, docs/b.md does not
-    assert finops_client.docs_context(tmp_path, max_chars=60).count("\n===== ") == 2
+    assert "other.md" not in ctx and "adr" not in ctx and ctx.endswith("lite")
+    # a header per file: README (32 chars) fits in 40, docs/architecture.md (39 more) does not
+    assert finops_client.docs_context(tmp_path, max_chars=40).count("\n===== ") == 1
 
 
 def _litellm_target(request: httpx.Request) -> httpx.Response:
