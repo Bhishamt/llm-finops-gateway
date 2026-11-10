@@ -8,6 +8,12 @@ is called out here.
 ## [Unreleased]
 
 ### Added
+- `deploy/azure/litellm.bicep`, `litellm-deploy.sh` and `push-config.sh`: the LiteLLM direction
+  on Azure Container Apps next to the gateway (proxy with the plugin, report as a dashboard
+  plugin, assistant; config files on an Azure Files share with hot reload).
+- Docs and images: both request paths as diagrams (`architecture.svg`,
+  `architecture-litellm.svg`), fresh screenshots of the report page, the report inside the
+  LiteLLM dashboard, the assistant and the Grafana dashboard; a FOCUS export example.
 - LiteLLM plugin: the gateway's webhook alerts (`budget_warn`, `budget_block`,
   `upstream_error`, ADR-0017) are posted from the plugin too, from `LFG_ALERT_WEBHOOK_URL`.
 - LiteLLM plugin: a key's metadata may carry a default project and use case

@@ -7,6 +7,8 @@ LiteLLM 1.108.0 (`ghcr.io/berriai/litellm:main-stable`, digest
 `sha256:c560d317136880ea92d62334d4367ab10955b1af189dd3ea24f6551290b1d6c1`), and
 will become the plugin's user guide.
 
+![The FinOps plugin inside LiteLLM](images/architecture-litellm.svg)
+
 ## Install
 
 ```bash
@@ -123,6 +125,8 @@ there regardless of which callbacks are on.
 
 ## The report page inside the LiteLLM dashboard
 
+![The report page as a LiteLLM dashboard plugin](images/litellm-dashboard-finops.png)
+
 The gateway's report page can be a LiteLLM dashboard plugin (ADR-0024): the dashboard shows
 "FinOps" in its mode switcher, loads the report in a frame and signs the viewer in with the
 identity it holds, so admins get one console. Two settings on the report service and one
@@ -149,6 +153,18 @@ only, and sets an HttpOnly session cookie (`SameSite=None; Secure`, eight hours)
 the report the scope of a `role: finops` key. Because the report is a third-party frame, the
 cookie needs HTTPS or `localhost`; the example stack serves it on `http://localhost:8081`.
 Nothing changes for team keys and finops keys outside the dashboard.
+
+## Deploy to Azure Container Apps
+
+`deploy/azure/litellm.bicep` adds the LiteLLM direction to an environment created by
+`deploy/azure/main.bicep`: the proxy with the plugin (`examples/litellm/Dockerfile`), the report
+page as a dashboard plugin and the assistant, a `litellm` database on the existing PostgreSQL
+server, and an Azure Files share with `pricing.yaml`, `policies.yaml` and the LiteLLM config
+mounted read-only into the proxy and the report. `deploy/azure/litellm-deploy.sh` runs the whole
+thing (images built with `az acr build`, secrets from Key Vault, Bicep, config upload, demo
+teams and keys); `deploy/azure/push-config.sh` uploads an edited policy or price book and the
+hot reload makes it live on the next call. Details and cost in
+[deploy/azure/README.md](../deploy/azure/README.md).
 
 ## Alerts
 

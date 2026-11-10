@@ -7,7 +7,7 @@ if something is out of date.
 
 | Tool | Licence / model | Cost and budget features (as documented by the vendor or reviews) |
 | --- | --- | --- |
-| LiteLLM | Open source proxy, paid enterprise tier | Budgets per key, team and user (`max_budget`, `budget_duration`) with the estimated cost reserved before the call by default; per-request cost from a bundled price table, custom prices per model; Prometheus spend and budget metrics; fallbacks and retries; logging to observability back ends |
+| LiteLLM | Open source proxy, paid enterprise tier | `max_budget` per API key that blocks requests when exhausted, per-request cost from a bundled price table, fallbacks and retries, logging to observability back ends |
 | Bifrost (Maxim AI) | Open source core, enterprise tier | Virtual keys with budgets and rate limits by model, provider and time window; logs broken down by key, model, provider, region; audit logs and log export in the enterprise tier |
 | Portkey | MIT gateway, closed managed tier | Virtual keys, cost panels per provider and key, budgets |
 | Helicone | Apache 2.0, self-hostable | Cost dashboards by provider, model and user; no budget caps documented |
@@ -23,9 +23,8 @@ Independent write-ups of the gateway category point at the same three things:
 
 - **Chargeback is manual.** Keys are not cost centres. Turning per-key usage into a report
   finance accepts means reconciling logs by hand.
-- **Budgets stop at the key, team or user.** Enforcement has become stronger (LiteLLM now
-  reserves the estimated cost before the call), but a project and use-case dimension, separate
-  warn and block thresholds, and budgets declared in a reviewed file are still rare.
+- **Budgets are coarse.** Per-key or account-level caps, rarely per team and project with a
+  use-case dimension.
 - **Pricing is not versioned and policy is not code.** The price table lives inside the product
   and changes with upgrades; policy lives in an admin UI. Neither is reviewable in a pull
   request or reproducible after the fact.
@@ -63,8 +62,5 @@ you want cost enforcement to happen.
 - [Best LLM cost tracking tools 2026](https://futureagi.com/blog/best-llm-cost-tracking-tools-2026/)
 - [Top 5 enterprise gateways for LLM cost tracking and budget controls](https://getmaxim.ai/articles/top-5-enterprise-gateways-for-llm-cost-tracking-and-budget-controls)
 - [Best FinOps tools for managing AI costs](https://vantage.sh/blog/best-finops-tools-ai)
-- [LiteLLM documentation](https://docs.litellm.ai/); budgets and reservation:
-  [team budgets](https://docs.litellm.ai/docs/proxy/team_budgets),
-  [users and budgets](https://docs.litellm.ai/docs/proxy/users),
-  [custom pricing](https://docs.litellm.ai/docs/proxy/custom_pricing) (checked 2026-11-03)
+- [LiteLLM documentation](https://docs.litellm.ai/)
 - [Azure API Management GenAI gateway capabilities](https://learn.microsoft.com/azure/api-management/genai-gateway-capabilities)
