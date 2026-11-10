@@ -3,6 +3,8 @@
 #   cd examples/litellm
 #   docker compose --env-file ../../.env up -d
 #   open http://localhost:4000/ui          (login: admin / the LITELLM_MASTER_KEY below)
+# The master key, the salt key and the database password default to local-only demo values;
+# set LITELLM_MASTER_KEY, LITELLM_SALT_KEY and LITELLM_DB_PASSWORD in .env for anything else.
 #
 # Models are the Azure OpenAI deployments the gateway already uses; the endpoint, key and API
 # version come from the repository's .env (LFG_AZURE_OPENAI_*).
@@ -19,9 +21,9 @@ services:
     ports: ["4000:4000"]
     depends_on: [litellm-db]
     environment:
-      DATABASE_URL: postgresql://litellm:litellm@litellm-db:5432/litellm
-      LITELLM_MASTER_KEY: sk-lfg-master-local-only
-      LITELLM_SALT_KEY: sk-lfg-salt-local-only
+      DATABASE_URL: postgresql://litellm:${LITELLM_DB_PASSWORD:-litellm}@litellm-db:5432/litellm
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-lfg-master-local-only}
+      LITELLM_SALT_KEY: ${LITELLM_SALT_KEY:-sk-lfg-salt-local-only}
       AZURE_API_BASE: ${LFG_AZURE_OPENAI_ENDPOINT}
       AZURE_API_KEY: ${LFG_AZURE_OPENAI_API_KEY}
       AZURE_API_VERSION: ${LFG_AZURE_OPENAI_API_VERSION:-2024-10-21}
@@ -37,9 +39,9 @@ services:
     ports: ["4001:4000"]
     depends_on: [litellm-db]
     environment:
-      DATABASE_URL: postgresql://litellm:litellm@litellm-db:5432/litellm
-      LITELLM_MASTER_KEY: sk-lfg-master-local-only
-      LITELLM_SALT_KEY: sk-lfg-salt-local-only
+      DATABASE_URL: postgresql://litellm:${LITELLM_DB_PASSWORD:-litellm}@litellm-db:5432/litellm
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-lfg-master-local-only}
+      LITELLM_SALT_KEY: ${LITELLM_SALT_KEY:-sk-lfg-salt-local-only}
       AZURE_API_BASE: ${LFG_AZURE_OPENAI_ENDPOINT}
       AZURE_API_KEY: ${LFG_AZURE_OPENAI_API_KEY}
       AZURE_API_VERSION: ${LFG_AZURE_OPENAI_API_VERSION:-2024-10-21}
@@ -68,7 +70,7 @@ services:
       LFG_DATABASE_URL: sqlite:////data/finops.db
       # the report as a LiteLLM dashboard plugin (ADR-0024): same salt key as the proxy
       LFG_LITELLM_PLUGIN_NAME: finops
-      LFG_LITELLM_SALT_KEY: sk-lfg-salt-local-only
+      LFG_LITELLM_SALT_KEY: ${LITELLM_SALT_KEY:-sk-lfg-salt-local-only}
     volumes:
       - ../../config:/app/finops-config:ro
       - .:/app/finops-example:ro
@@ -89,7 +91,7 @@ services:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: litellm
-      POSTGRES_PASSWORD: litellm
+      POSTGRES_PASSWORD: ${LITELLM_DB_PASSWORD:-litellm}
       POSTGRES_DB: litellm
 
 volumes:
