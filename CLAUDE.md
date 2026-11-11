@@ -8,7 +8,7 @@ is; keep it free of anything private.
 `llm-finops-gateway`: an OpenAI-compatible LLM gateway that makes every call attributable
 (team + project, optional use case), prices it from a versioned price book, enforces per-team
 budgets and rate limits as code, and exposes cost and policy data to Prometheus / OpenTelemetry.
-Apache-2.0, maintained by András Kelle (`andrasKelle`). Version `0.2.0` (2026-11-02), first commit pushed
+Apache-2.0, maintained by András Kelle (`andrasKelle`). Version `0.3.0` (2026-11-11), first commit pushed
 2026-10-28, repository private until launch.
 
 Audience: platform / FinOps teams that put the gateway in front of Azure OpenAI, Ollama (on-prem)
@@ -195,6 +195,9 @@ Fixed and merged on 2026-10-28 (PRs #6 and #8), all green since:
   `llm_finops_gateway-0.2.0-py3-none-any.whl`, `llm_finops_gateway-0.2.0.tar.gz`; image tags
   `v0.2.0` and `latest`. The Azure Container App `lfg-gateway` runs the `v0.2.0` image
   (built with `az acr build`, revision 4, `/healthz` reports 0.2.0).
+- `v0.3.0` (2026-11-11): the LiteLLM release (ADRs 0019 to 0024), same workflow; the four Azure
+  Container Apps (`lfg-gateway`, `lfg-report`, `lfg-litellm`, `lfg-assistant`) are moved to the
+  `v0.3.0` images built with `az acr build` from the tag.
 
 Repository settings: Workflow permissions "Read and write" (needed by `cla` and `release`);
 automatic deletion of merged head branches is on; Discussions and topics are not set yet;

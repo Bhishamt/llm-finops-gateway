@@ -1,7 +1,7 @@
 # 0023. The ledger is exported in the FOCUS format
 
 Date: 2026-11-05
-Status: Proposed
+Status: Accepted
 
 ## Context
 

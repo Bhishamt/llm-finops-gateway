@@ -25,10 +25,10 @@ immutable once accepted; a later ADR supersedes an earlier one rather than editi
 | [0018](0018-ledger-reconcile.md) | Reconcile the ledger against the provider's bill, per meter, one day at a time | Accepted |
 | [0019](0019-litellm-plugin.md) | The FinOps rules as a LiteLLM plugin | Accepted |
 | [0020](0020-open-core-boundary.md) | What stays in this repository and what an enterprise layer adds | Accepted |
-| [0021](0021-project-registry-and-budgets.md) | Projects and use cases are registered in the policy file, with their own budgets | Proposed |
-| [0022](0022-configuration-hot-reload.md) | The price book and the policy file are reloaded when they change | Proposed |
-| [0023](0023-focus-export.md) | The ledger is exported in the FOCUS format | Proposed |
-| [0024](0024-litellm-dashboard-plugin.md) | The report page runs inside the LiteLLM dashboard as a plugin | Proposed |
+| [0021](0021-project-registry-and-budgets.md) | Projects and use cases are registered in the policy file, with their own budgets | Accepted |
+| [0022](0022-configuration-hot-reload.md) | The price book and the policy file are reloaded when they change | Accepted |
+| [0023](0023-focus-export.md) | The ledger is exported in the FOCUS format | Accepted |
+| [0024](0024-litellm-dashboard-plugin.md) | The report page runs inside the LiteLLM dashboard as a plugin | Accepted |
 
 ## Template
 

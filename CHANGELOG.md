@@ -7,12 +7,15 @@ is called out here.
 
 ## [Unreleased]
 
-### Changed
-- Assistant example: one panel instead of two. Every question is answered from the
-  repository's documentation (README and three pages, about 15k tokens as the system prompt)
-  through the gateway, so the demo traffic is attributed, priced and shows the provider's
-  prompt cache from the second question on; the free chat is gone. The example policy's
-  assistant teams get budgets that fit a handful of such questions.
+### Added
+- Nothing yet.
+
+## [0.3.0] - 2026-11-11
+
+The LiteLLM release: the same rules inside an existing LiteLLM proxy as a plugin and the report
+inside its dashboard, a project registry with per-project budgets, hot reload of the price book
+and the policy file, the FOCUS export, the assistant example, and the LiteLLM direction deployed
+on Azure next to the gateway.
 
 ### Added
 - `deploy/azure/litellm.bicep`, `litellm-deploy.sh` and `push-config.sh`: the LiteLLM direction
@@ -37,11 +40,13 @@ is called out here.
 - FOCUS export (ADR-0023): `GET /v1/finops/export.focus.csv` and `ledger export` write the
   ledger as FOCUS 1.1 rows per team, project, use case, provider, model, price book version
   and UTC day, with `x_` columns for calls and token detail.
-- `examples/assistant/`: a Streamlit page that chats through the gateway or the plugin and
-  shows the FinOps receipt next to every answer (sign in with a key only, the page reads the key's
-  team, models, budget and registered projects from the policy; team and project budget bars,
-  rejections), plus a documentation Q&A panel routed through the same gateway; extra
-  `[assistant]`, Dockerfile and compose service on port 8501.
+- `examples/assistant/`: a Streamlit page that answers questions about the gateway from the
+  repository's documentation (README and three pages, about 15k tokens as the system prompt)
+  through the gateway or the plugin and shows the FinOps receipt next to every answer: sign in
+  with a key only, the page reads the key's team, models, budget and registered projects from
+  the policy; team and project budget bars, rejections, the provider's prompt cache visible from
+  the second question on. Extra `[assistant]`, Dockerfile and compose service on port 8501; the
+  example policy's assistant teams get budgets that fit a handful of such questions.
 - `/v1/finops/budgets` lists each team's project registry (`projects`: effective models, use
   cases and budget state per registered project; `null` for teams with free-text projects).
 - The LiteLLM plugin publishes the gateway's `lfg_*` Prometheus metrics into the registry
@@ -214,6 +219,7 @@ First public release.
   results, comparison with existing gateways, ADRs 0001 to 0009, CONTRIBUTING, GOVERNANCE,
   CODE_OF_CONDUCT, SECURITY, CLA, MAINTAINERS.
 
-[Unreleased]: https://github.com/andrasKelle/llm-finops-gateway/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/andrasKelle/llm-finops-gateway/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/andrasKelle/llm-finops-gateway/releases/tag/v0.3.0
 [0.2.0]: https://github.com/andrasKelle/llm-finops-gateway/releases/tag/v0.2.0
 [0.1.0]: https://github.com/andrasKelle/llm-finops-gateway/releases/tag/v0.1.0
