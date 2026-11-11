@@ -7,6 +7,13 @@ is called out here.
 
 ## [Unreleased]
 
+### Changed
+- Assistant example: one panel instead of two. Every question is answered from the
+  repository's documentation (README and three pages, about 15k tokens as the system prompt)
+  through the gateway, so the demo traffic is attributed, priced and shows the provider's
+  prompt cache from the second question on; the free chat is gone. The example policy's
+  assistant teams get budgets that fit a handful of such questions.
+
 ### Added
 - `deploy/azure/litellm.bicep`, `litellm-deploy.sh` and `push-config.sh`: the LiteLLM direction
   on Azure Container Apps next to the gateway (proxy with the plugin, report as a dashboard

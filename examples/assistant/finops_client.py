@@ -183,11 +183,14 @@ def identity(
     return None
 
 
-DOC_GLOBS = ("README.md", "docs/*.md", "docs/adr/*.md")
+DOC_GLOBS = ("README.md", "docs/architecture.md", "docs/litellm.md", "docs/reporting.md")
 
 
-def docs_context(root: Path, max_chars: int = 400_000) -> str:
-    """The repository's documentation as one text block, file by file, for the Q&A panel."""
+def docs_context(root: Path, max_chars: int = 80_000) -> str:
+    """The repository's documentation as one text block, file by file, as the system prompt of
+    the assistant: the README and the three pages that explain the gateway, about 15k tokens,
+    so that a question costs a fraction of a cent and the prefix is served from the provider's
+    prompt cache from the second question on."""
     parts: list[str] = []
     total = 0
     for pattern in DOC_GLOBS:
@@ -204,5 +207,7 @@ def docs_context(root: Path, max_chars: int = 400_000) -> str:
 QA_SYSTEM = (
     "You answer questions about the llm-finops-gateway project, an open-source LLM FinOps "
     "gateway and LiteLLM plugin. Answer from the documentation below; when it does not cover "
-    "the question, say so instead of guessing. Be concise and name the document you relied on.\n"
+    "the question, say so instead of guessing. Be concise and name the document you relied on. "
+    "A question unrelated to the project gets a one-sentence answer and a pointer back to the "
+    "documentation.\n"
 )

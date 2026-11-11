@@ -1,15 +1,18 @@
 # Assistant example
 
-A Streamlit page with two halves: a chat that goes through the gateway or the LiteLLM plugin
-and shows the FinOps receipt (cost, team and project budget, warnings, rejections) next to
-every answer, and a panel that answers questions about this project from its documentation,
-through the same gateway, so that traffic is attributed as well.
+A Streamlit page that answers questions about this project from its documentation, through
+the gateway or the LiteLLM plugin, and shows the FinOps receipt (cost, cached input tokens,
+team and project budget, warnings, rejections) next to every answer. The documentation is the
+system prompt of every call, so the demo traffic is attributed and priced like any other call,
+and from the second question on the receipt shows the provider's prompt cache at work.
 
 Sign in with an API key (a gateway `lfg_` key or a LiteLLM virtual key) and the page reads
 back what the policy says about it: the team the key belongs to, its allowed models, rate
 limit and budget, and the team's registered projects with their use cases and budgets, so the
 project and use case are picked from lists where a registry exists. A LiteLLM key that carries
 a default project in its metadata has it preselected. Nothing is configured on the page itself.
+
+![The assistant](../../docs/images/assistant.png)
 
 ```bash
 pip install "llm-finops-gateway[assistant]"

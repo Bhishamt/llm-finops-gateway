@@ -79,10 +79,10 @@ example stack: [examples/litellm/](examples/litellm/).
 
 `examples/assistant/` is a small Streamlit page: sign in with a key, and the page shows what
 the policy says about it (team, allowed models, budget, registered projects and use cases);
-pick a project and a use case, chat, and read the receipt next to every answer: cost, team and
-project budget, warnings, or the rejection that stopped the call before the model. A second panel answers
-questions about this project from its documentation, through the same gateway, so that
-traffic is attributed too. `pip install "llm-finops-gateway[assistant]"` and
+pick a project and a use case, ask about the gateway, and read the receipt next to every
+answer: cost, cached input tokens, team and project budget, warnings, or the rejection that
+stopped the call before the model. The answers come from this repository's documentation,
+sent through the same gateway, so the demo traffic is attributed and priced too. `pip install "llm-finops-gateway[assistant]"` and
 `streamlit run examples/assistant/app.py`, or the `assistant` service of the LiteLLM compose
 stack on port 8501.
 

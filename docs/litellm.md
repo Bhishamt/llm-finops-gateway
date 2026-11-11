@@ -84,7 +84,7 @@ cd examples/litellm
 docker compose --env-file ../../.env up -d --build      # Azure OpenAI endpoint and key from .env
 ./demo.sh                                               # creates two teams and keys, runs six calls
 open http://localhost:8081/finops                       # the same report page the gateway serves
-open http://localhost:8501                              # the assistant: pick a role, chat, read the receipt
+open http://localhost:8501                              # the assistant: sign in with a key, ask, read the receipt
 open http://localhost:4001/ui                           # LiteLLM admin UI, admin / the master key
 ```
 
