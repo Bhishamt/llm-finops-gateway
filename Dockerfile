@@ -1,11 +1,11 @@
 # syntax=docker/dockerfile:1.7
-FROM python:3.12-slim AS build
+FROM python:3.15-slim AS build
 WORKDIR /app
 COPY pyproject.toml README.md LICENSE NOTICE ./
 COPY src ./src
 RUN pip install --no-cache-dir --upgrade pip && pip install --no-cache-dir ".[azure,postgres,litellm-ui]"
 
-FROM python:3.12-slim
+FROM python:3.15-slim
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 \
     LFG_PRICING_PATH=/app/config/pricing.yaml \
     LFG_DATABASE_URL=sqlite:////data/gateway.db
