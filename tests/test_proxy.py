@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import tomllib
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -23,6 +24,9 @@ def test_healthz(client: TestClient) -> None:
     r = client.get("/healthz")
     assert r.status_code == 200
     assert r.json()["price_book"] == "test-1"
+    # the string in __init__.py is bumped by hand; it must match the version in pyproject.toml
+    pyproject = tomllib.loads((Path(__file__).parents[1] / "pyproject.toml").read_text())
+    assert r.json()["version"] == pyproject["project"]["version"]
 
 
 def test_models_lists_price_book(client: TestClient) -> None:

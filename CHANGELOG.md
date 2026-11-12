@@ -10,6 +10,12 @@ is called out here.
 ### Added
 - Nothing yet.
 
+## [0.3.1] - 2026-11-12
+
+### Fixed
+- The version reported by `/healthz`, the report page and the `x_finops` block was still
+  `0.2.0` in 0.3.0 (`__version__` is set by hand); a test now checks it against `pyproject.toml`.
+
 ## [0.3.0] - 2026-11-11
 
 The LiteLLM release: the same rules inside an existing LiteLLM proxy as a plugin and the report
@@ -219,7 +225,8 @@ First public release.
   results, comparison with existing gateways, ADRs 0001 to 0009, CONTRIBUTING, GOVERNANCE,
   CODE_OF_CONDUCT, SECURITY, CLA, MAINTAINERS.
 
-[Unreleased]: https://github.com/andrasKelle/llm-finops-gateway/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/andrasKelle/llm-finops-gateway/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/andrasKelle/llm-finops-gateway/releases/tag/v0.3.1
 [0.3.0]: https://github.com/andrasKelle/llm-finops-gateway/releases/tag/v0.3.0
 [0.2.0]: https://github.com/andrasKelle/llm-finops-gateway/releases/tag/v0.2.0
 [0.1.0]: https://github.com/andrasKelle/llm-finops-gateway/releases/tag/v0.1.0
