@@ -1,7 +1,7 @@
 # 0022. The price book and the policy file are reloaded when they change
 
 Date: 2026-11-05
-Status: Proposed
+Status: Accepted
 
 ## Context
 

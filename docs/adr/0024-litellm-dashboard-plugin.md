@@ -1,7 +1,7 @@
 # 0024. The report page runs inside the LiteLLM dashboard as a plugin
 
 Date: 2026-11-05
-Status: Proposed
+Status: Accepted
 
 ## Context
 

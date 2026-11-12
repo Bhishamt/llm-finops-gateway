@@ -1,7 +1,7 @@
 # 0021. Projects and use cases are registered in the policy file, with their own budgets
 
 Date: 2026-11-05
-Status: Proposed
+Status: Accepted
 
 ## Context
 
