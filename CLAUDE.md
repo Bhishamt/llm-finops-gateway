@@ -1,7 +1,7 @@
 # CLAUDE.md
 
-Project context for Claude Code. This file is committed and will be public once the repository
-is; keep it free of anything private.
+Project context for Claude Code. This file is committed and public; keep it free of anything
+private.
 
 ## What this is
 
@@ -9,7 +9,7 @@ is; keep it free of anything private.
 (team + project, optional use case), prices it from a versioned price book, enforces per-team
 budgets and rate limits as code, and exposes cost and policy data to Prometheus / OpenTelemetry.
 Apache-2.0, maintained by András Kelle (`andrasKelle`). Version `0.3.1` (2026-11-12), first commit pushed
-2026-10-28, repository private until launch.
+2026-10-28, public since 2026-11-13.
 
 Audience: platform / FinOps teams that put the gateway in front of Azure OpenAI, Ollama (on-prem)
 and any OpenAI-compatible endpoint (Azure OpenAI v1, vLLM, LocalAI). Positioning vs LiteLLM, Portkey, Bifrost, Helicone is
@@ -188,8 +188,8 @@ Fixed and merged on 2026-10-28 (PRs #6 and #8), all green since:
   step before the build; `github.repository` keeps the owner's casing and GHCR rejects it.
 - `v0.1.0` was released on 2026-10-28 with this workflow (tag re-pointed to the fixed `main`;
   no release had been published before). Assets: `llm_finops_gateway-0.1.0-py3-none-any.whl`,
-  `llm_finops_gateway-0.1.0.tar.gz`; image tags `v0.1.0` and `latest`. The image is private
-  until launch (package visibility is set separately from the repository).
+  `llm_finops_gateway-0.1.0.tar.gz`; image tags `v0.1.0` and `latest`. The image is public
+  since 2026-11-13 (package visibility is set separately from the repository).
 - `v0.2.0` released on 2026-11-02 with the same workflow: release PR #29 merged into `main`
   (2f8d75c), tag `v0.2.0` on that merge commit, release run green on the first try. Assets:
   `llm_finops_gateway-0.2.0-py3-none-any.whl`, `llm_finops_gateway-0.2.0.tar.gz`; image tags
@@ -202,6 +202,7 @@ Fixed and merged on 2026-10-28 (PRs #6 and #8), all green since:
   hand at every release; `test_healthz` now checks it against `pyproject.toml`); the four apps run `v0.3.1`.
 
 Repository settings: Workflow permissions "Read and write" (needed by `cla` and `release`);
-automatic deletion of merged head branches is on; Discussions and topics are not set yet;
-branch protection is not available while the repository is private on the free plan, enable
-it at launch.
+automatic deletion of merged head branches is on; Discussions, topics, Dependabot alerts and
+private vulnerability reporting are on since 2026-11-13; branch protection on `main` since the
+same day: pull request required, the `ci` checks (test 3.11, test 3.12, audit, docker) required,
+enforced for admins, no force pushes or deletions.
