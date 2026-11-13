@@ -7,7 +7,9 @@ from pathlib import Path
 from llm_finops_gateway.ledger import CostEntry, Ledger
 
 
-def _entry(request_id: str, team: str = "platform", cost: str = "0.001") -> CostEntry:
+def _entry(
+    request_id: str, team: str = "platform", cost: str = "0.001", run_id: str | None = None
+) -> CostEntry:
     return CostEntry(
         request_id=request_id,
         team=team,
@@ -19,6 +21,7 @@ def _entry(request_id: str, team: str = "platform", cost: str = "0.001") -> Cost
         output_tokens=5,
         cost_usd=Decimal(cost),
         price_book_version="v",
+        run_id=run_id,
     )
 
 
@@ -31,6 +34,14 @@ def test_record_and_summarise(ledger: Ledger) -> None:
     platform = rows[0]
     assert platform.cost_usd == Decimal("0.003")
     assert platform.input_tokens == 20 and platform.output_tokens == 10
+
+
+def test_run_id_is_stored_and_optional(ledger: Ledger) -> None:
+    ledger.record(_entry("r1", run_id="run-7"))
+    ledger.record(_entry("r2", run_id="run-7"))
+    ledger.record(_entry("r3"))
+    rows = ledger.rows(datetime(2020, 1, 1, tzinfo=UTC), datetime(2100, 1, 1, tzinfo=UTC))
+    assert [r.run_id for r in rows] == ["run-7", "run-7", None]
 
 
 def test_summary_filters(ledger: Ledger) -> None:

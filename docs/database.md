@@ -18,7 +18,9 @@ The driver for PostgreSQL comes with the `[postgres]` extra and is in the Docker
 
 Created by SQLAlchemy `create_all` on the first start (`ledger.py`); nothing else creates or
 alters tables. Adding a column later means an `ALTER TABLE` by hand, as the test plan did for
-`cached_input_tokens`.
+`cached_input_tokens`. An existing deployment adds `run_id` with
+`ALTER TABLE cost_records ADD COLUMN run_id varchar(128);` before the gateway that writes it
+starts; rows written before it stay null.
 
 ### `cost_records`: one row per completed call
 
@@ -30,6 +32,7 @@ alters tables. Adding a column later means an `ALTER TABLE` by hand, as the test
 | `team`, `project` | varchar(64) | attribution (indexes) |
 | `use_case` | varchar(64) | optional dimension, `unspecified` when absent |
 | `key_id` | varchar(64), nullable | which team key made the call |
+| `run_id` | varchar(128), nullable | the caller's `X-Run-Id`, grouping the calls of one agent or pipeline run |
 | `provider` | varchar(32) | adapter that served it (`azure_openai`, `openai_compat`, `ollama`) |
 | `model` | varchar(64) | the price book model name (index) |
 | `input_tokens`, `output_tokens` | integer | as reported by the provider |

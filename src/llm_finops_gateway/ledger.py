@@ -48,6 +48,7 @@ class CostRecord(Base):
     project: Mapped[str] = mapped_column(String(64), index=True)
     use_case: Mapped[str] = mapped_column(String(64))
     key_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    run_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     provider: Mapped[str] = mapped_column(String(32))
     model: Mapped[str] = mapped_column(String(64), index=True)
     input_tokens: Mapped[int] = mapped_column(Integer)
@@ -83,6 +84,7 @@ class CostEntry:
     ts: datetime | None = None  # defaults to now (UTC); explicit only for backfills and tests
     key_id: str | None = None
     cached_input_tokens: int = 0
+    run_id: str | None = None  # the caller's X-Run-Id: groups the calls of one agent run
 
 
 @dataclass(frozen=True)
@@ -112,6 +114,7 @@ class LedgerRow:
     cached_input_tokens: int
     cost_usd: Decimal
     price_book_version: str
+    run_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -171,6 +174,7 @@ class Ledger:
                     project=entry.project,
                     use_case=entry.use_case,
                     key_id=entry.key_id,
+                    run_id=entry.run_id,
                     provider=entry.provider,
                     model=entry.model,
                     input_tokens=entry.input_tokens,
@@ -308,6 +312,7 @@ class Ledger:
                     cached_input_tokens=r.cached_input_tokens,
                     cost_usd=clean(r.cost_usd),
                     price_book_version=r.price_book_version,
+                    run_id=r.run_id,
                 )
                 for r in records
             ]
