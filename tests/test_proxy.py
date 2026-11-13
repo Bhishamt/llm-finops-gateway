@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import tomllib
+from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -52,6 +53,41 @@ def test_chat_completion_is_openai_shaped_and_priced(
     assert fake_provider.calls[0]["model"] == "priced"
     rows = ledger.summary()
     assert len(rows) == 1 and rows[0].calls == 1 and rows[0].cost_usd == Decimal("0.00075")
+
+
+def test_run_id_is_echoed_and_recorded(
+    client: TestClient, fake_provider: FakeProvider, ledger: Ledger
+) -> None:
+    r = client.post(
+        "/v1/chat/completions", json=BODY, headers={**ATTR_HEADERS, "X-Run-Id": "run-42"}
+    )
+    assert r.status_code == 200, r.text
+    assert r.headers["X-FinOps-Run-Id"] == "run-42"
+    assert r.json()["x_finops"]["run_id"] == "run-42"
+    rows = ledger.rows(datetime(2000, 1, 1, tzinfo=UTC), datetime(2100, 1, 1, tzinfo=UTC))
+    assert rows[0].run_id == "run-42"
+
+
+def test_run_id_without_a_call_is_absent_not_empty(
+    client: TestClient, fake_provider: FakeProvider, ledger: Ledger
+) -> None:
+    r = client.post("/v1/chat/completions", json=BODY, headers=ATTR_HEADERS)
+    assert r.status_code == 200, r.text
+    assert "X-FinOps-Run-Id" not in r.headers
+    assert r.json()["x_finops"]["run_id"] is None
+    rows = ledger.rows(datetime(2000, 1, 1, tzinfo=UTC), datetime(2100, 1, 1, tzinfo=UTC))
+    assert rows[0].run_id is None
+
+
+def test_over_long_run_id_is_rejected_before_upstream_call(
+    client: TestClient, fake_provider: FakeProvider
+) -> None:
+    r = client.post(
+        "/v1/chat/completions", json=BODY, headers={**ATTR_HEADERS, "X-Run-Id": "x" * 129}
+    )
+    assert r.status_code == 400
+    assert r.json()["detail"]["error"] == "invalid_run_id"
+    assert fake_provider.calls == []
 
 
 def test_missing_attribution_is_rejected_before_upstream_call(

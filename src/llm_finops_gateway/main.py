@@ -22,7 +22,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Stre
 
 from . import __version__
 from .alerts import Alerter
-from .attribution import Attribution, resolve_attribution
+from .attribution import Attribution, resolve_attribution, run_id_from_header
 from .auth import KeyRing
 from .config import ProviderKind, Settings
 from .enforcement import budget_headers, cost_headers, rejection
@@ -348,6 +348,7 @@ def create_app(
         req: ChatRequest,
         response: Response,
         attr: Annotated[Attribution, Depends(resolve_attribution)],
+        run_id: Annotated[str | None, Depends(run_id_from_header)],
         state: Annotated[Any, Depends(_state)],
     ) -> ChatResponse | StreamingResponse:
         book: PriceBook = state.price_book
@@ -425,6 +426,7 @@ def create_app(
                     cost_usd=cost,
                     price_book_version=book.version,
                     key_id=attr.key_id,
+                    run_id=run_id,
                 ),
                 release_reserved=decision.reserved_usd,
                 project_reserved=project_reserved,
@@ -471,6 +473,7 @@ def create_app(
                 use_case=attr.use_case,
                 provider=provider.name,
                 key_id=attr.key_id,
+                run_id=run_id,
                 policy=PolicyEnvelope(
                     version=engine.version,
                     budget=_budget_envelope(status),
@@ -585,7 +588,11 @@ def create_app(
             return StreamingResponse(
                 events(),
                 media_type="text/event-stream",
-                headers={"X-FinOps-Request-Id": request_id, "Cache-Control": "no-cache"},
+                headers={
+                    "X-FinOps-Request-Id": request_id,
+                    **({"X-FinOps-Run-Id": run_id} if run_id else {}),
+                    "Cache-Control": "no-cache",
+                },
             )
 
         started = time.perf_counter()
@@ -617,6 +624,8 @@ def create_app(
         response.headers.update(
             cost_headers(request_id, cost, book.currency, result.cached_input_tokens)
         )
+        if run_id:
+            response.headers["X-FinOps-Run-Id"] = run_id
 
         return ChatResponse(
             id=request_id,

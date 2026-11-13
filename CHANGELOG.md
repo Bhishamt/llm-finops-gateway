@@ -8,7 +8,10 @@ is called out here.
 ## [Unreleased]
 
 ### Added
-- Nothing yet.
+- `X-Run-Id`, optional on both the gateway and the LiteLLM plugin (#61): the header is stored
+  on the ledger row, echoed as `X-FinOps-Run-Id` and in `x_finops`, and exported in the FOCUS
+  `Tags` column, so the calls of one agent or pipeline run can be told apart. Nothing is
+  validated beyond a 128-character bound, and a call that sends none records null (ADR-0025).
 
 ## [0.3.1] - 2026-11-12
 

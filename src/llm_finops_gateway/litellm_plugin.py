@@ -32,7 +32,7 @@ from litellm.integrations.custom_logger import CustomLogger
 from prometheus_client import REGISTRY
 
 from .alerts import Alerter
-from .attribution import Attribution, attribution_from_headers
+from .attribution import Attribution, attribution_from_headers, run_id_from_header
 from .config import Settings
 from .enforcement import budget_headers, cost_headers, rejection
 from .ledger import CostEntry, Ledger
@@ -60,6 +60,7 @@ class _Pending:
     warnings: list[str] = field(default_factory=list)
     project_reserved_usd: Decimal | None = None  # None: the project has no budget of its own
     created: float = field(default_factory=time.monotonic)
+    run_id: str | None = None
 
 
 def _usage_of(obj: Any) -> TokenUsage | None:
@@ -227,6 +228,7 @@ class FinOpsPlugin(CustomLogger):
         defaults = _key_defaults(user_api_key_dict)
         project = headers.get("x-project") or defaults.get("project")
         use_case = headers.get("x-use-case") or defaults.get("use_case")
+        run_id = run_id_from_header(headers.get("x-run-id"))
         if not project:
             raise HTTPException(
                 status_code=400,
@@ -275,6 +277,7 @@ class FinOpsPlugin(CustomLogger):
             decision.reserved_usd,
             list(decision.warnings),
             decision.project_reserved_usd if decision.project_budget is not None else None,
+            run_id=run_id,
         )
         data.setdefault("metadata", {})[META] = {"request_id": request_id, "team": attr.team}
         return data
@@ -321,6 +324,7 @@ class FinOpsPlugin(CustomLogger):
                 cost_usd=cost,
                 price_book_version=book.version,
                 key_id=pending.attr.key_id,
+                run_id=pending.run_id,
             ),
             release_reserved=pending.reserved_usd,
             project_reserved=pending.project_reserved_usd,
@@ -376,6 +380,8 @@ class FinOpsPlugin(CustomLogger):
         request_id = str(meta["request_id"])
         headers = {"X-FinOps-Request-Id": request_id, "X-FinOps-Currency": book.currency}
         pending = self._pending.get(request_id)
+        if pending is not None and pending.run_id:
+            headers["X-FinOps-Run-Id"] = pending.run_id
         usage = _usage_of(response)
         if pending is not None and usage is not None:
             # Non-streaming: the usage is here, settle now so the cost travels in the headers.

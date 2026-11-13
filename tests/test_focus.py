@@ -1,3 +1,6 @@
+import csv
+import io
+import json
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -16,7 +19,14 @@ from tests.conftest import FakeProvider
 
 
 def _entry(
-    ts: datetime, team: str, project: str, model: str, cost: str, rid: str, use_case: str = "faq"
+    ts: datetime,
+    team: str,
+    project: str,
+    model: str,
+    cost: str,
+    rid: str,
+    use_case: str = "faq",
+    run_id: str | None = None,
 ) -> CostEntry:
     return CostEntry(
         request_id=rid,
@@ -31,6 +41,7 @@ def _entry(
         cost_usd=Decimal(cost),
         price_book_version="2026-11-02",
         ts=ts,
+        run_id=run_id,
     )
 
 
@@ -56,6 +67,21 @@ def test_rows_are_aggregated_per_day_and_attribution(filled: Ledger) -> None:
     assert first.calls == 2 and first.cost == Decimal("0.003")
     assert first.input_tokens == 200 and first.cached_input_tokens == 40
     assert agg[2].team == "research" and agg[2].use_case == "eval"
+
+
+def test_run_id_is_exported_in_tags_and_keeps_runs_apart(ledger: Ledger) -> None:
+    d = datetime(2026, 11, 3, 9, 0, tzinfo=UTC)
+    ledger.record(_entry(d, "platform", "demo", "gpt-4.1-mini", "0.001", "r1", run_id="run-a"))
+    ledger.record(_entry(d, "platform", "demo", "gpt-4.1-mini", "0.002", "r2", run_id="run-a"))
+    ledger.record(_entry(d, "platform", "demo", "gpt-4.1-mini", "0.004", "r3", run_id="run-b"))
+    ledger.record(_entry(d, "platform", "demo", "gpt-4.1-mini", "0.008", "r4"))
+    start, end = datetime(2026, 11, 1, tzinfo=UTC), datetime(2026, 12, 1, tzinfo=UTC)
+    rows = aggregate(ledger.rows(start, end))
+    assert [(r.run_id, r.calls) for r in rows] == [("run-a", 2), ("run-b", 1), (None, 1)]
+    csv_rows = list(
+        csv.DictReader(io.StringIO(focus_csv(ledger.rows(start, end), "USD", start, end)))
+    )
+    assert [json.loads(r["Tags"]).get("run_id") for r in csv_rows] == ["run-a", "run-b", None]
 
 
 def test_rows_window_and_filters(filled: Ledger) -> None:

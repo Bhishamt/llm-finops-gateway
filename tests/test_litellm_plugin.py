@@ -71,11 +71,16 @@ def key(
 
 
 def request(
-    model: str = "gpt-4o-mini", project: str | None = "chat-assistant", **extra: Any
+    model: str = "gpt-4o-mini",
+    project: str | None = "chat-assistant",
+    run_id: str | None = None,
+    **extra: Any,
 ) -> dict[str, Any]:
     headers = {"content-type": "application/json"}
     if project:
         headers["x-project"] = project
+    if run_id:
+        headers["x-run-id"] = run_id
     data: dict[str, Any] = {
         "model": model,
         "messages": [{"role": "user", "content": "Say OK"}],
@@ -134,6 +139,25 @@ async def test_key_metadata_supplies_the_default_project_and_use_case(
     await plugin.async_post_call_response_headers_hook(data, bot, response())
     rows = ledger.rows(datetime(2000, 1, 1, tzinfo=UTC), datetime(2100, 1, 1, tzinfo=UTC))
     assert {r.project for r in rows} == {"chat-assistant", "internal-tools"}
+
+
+async def test_run_id_crosses_the_hooks_into_the_row_and_the_headers(
+    plugin: FinOpsPlugin, ledger: Ledger
+) -> None:
+    data = await plugin.async_pre_call_hook(key(), None, request(run_id="run-9"), "acompletion")
+    assert data is not None
+    headers = await plugin.async_post_call_response_headers_hook(data, key(), response())
+    assert headers is not None
+    assert headers["X-FinOps-Run-Id"] == "run-9"
+    rows = ledger.rows(datetime(2000, 1, 1, tzinfo=UTC), datetime(2100, 1, 1, tzinfo=UTC))
+    assert rows[0].run_id == "run-9"
+
+
+async def test_over_long_run_id_is_400_before_the_call(plugin: FinOpsPlugin) -> None:
+    with pytest.raises(HTTPException) as exc:
+        await plugin.async_pre_call_hook(key(), None, request(run_id="x" * 129), "acompletion")
+    assert exc.value.status_code == 400
+    assert detail_of(exc.value)["error"] == "invalid_run_id"
 
 
 async def test_key_without_team_is_400(plugin: FinOpsPlugin) -> None:

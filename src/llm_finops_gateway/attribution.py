@@ -10,7 +10,8 @@ Design decision (ADR-0006): where the owner comes from depends on ``auth_mode``:
 * ``headers``: the team is taken from ``X-Team`` as declared. For development and networks
   where the caller is already authenticated upstream.
 
-``X-Project`` is always required; ``X-Use-Case`` is optional.
+``X-Project`` is always required; ``X-Use-Case`` is optional. ``X-Run-Id`` is optional too: it
+marks the calls of one agent or pipeline run and is stored as given, never interpreted.
 """
 
 from __future__ import annotations
@@ -24,6 +25,7 @@ from fastapi import Header, HTTPException, Request
 from .auth import KeyRing
 
 _TAG_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+_RUN_ID_MAX = 128
 
 
 @dataclass(frozen=True)
@@ -144,3 +146,18 @@ def resolve_attribution(
         keyring: KeyRing = request.app.state.keyring
         return attribution_from_api_key(keyring, authorization, x_team, x_project, x_use_case)
     return attribution_from_headers(x_team, x_project, x_use_case)
+
+
+def run_id_from_header(x_run_id: Annotated[str | None, Header()] = None) -> str | None:
+    """The caller's run id, if any. Only its length is bounded; the value is opaque."""
+    if not x_run_id:
+        return None
+    if len(x_run_id) > _RUN_ID_MAX:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "invalid_run_id",
+                "message": f"X-Run-Id must be at most {_RUN_ID_MAX} characters",
+            },
+        )
+    return x_run_id

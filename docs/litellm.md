@@ -70,7 +70,9 @@ curl -s -X POST $LITELLM/key/generate -H "Authorization: Bearer $MASTER" \
   -d '{"team_id":"<team id>","key_alias":"support-bot","metadata":{"finops":{"project":"chat-assistant","use_case":"faq"}}}'
 ```
 
-`X-Project` and `X-Use-Case` still win when a call sends them.
+`X-Project` and `X-Use-Case` still win when a call sends them. `X-Run-Id` is optional and
+separate from attribution: the plugin stores it on the row and returns it as
+`X-FinOps-Run-Id`, so an agent run's calls can be told apart.
 
 ## Try it locally
 
@@ -195,7 +197,7 @@ created with `/key/generate` under it.
 
 | Fact | Result |
 | --- | --- |
-| Request headers in `async_pre_call_hook` | Yes: `data["proxy_server_request"]["headers"]`, lower-cased keys (`x-project`, `x-use-case`) |
+| Request headers in `async_pre_call_hook` | Yes: `data["proxy_server_request"]["headers"]`, lower-cased keys (`x-project`, `x-use-case`, `x-run-id`) |
 | Team of the calling key | Yes: `user_api_key_dict.team_alias` (`customer-support`), `team_id`, `key_alias` |
 | Metadata set in the pre-call hook | Reaches the headers hook (`data["metadata"]`) and the success and failure events (`kwargs["litellm_params"]["metadata"]`). LiteLLM fills `metadata` with many keys of its own, so the plugin uses one namespaced key |
 | Headers hook, non-streaming | Runs after the upstream call with the `ModelResponse` (usage available); headers it returns reach the client |

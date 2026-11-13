@@ -80,6 +80,7 @@ class FocusRow:
     output_tokens: int
     cached_input_tokens: int
     cost: Decimal
+    run_id: str | None = None
 
 
 def _day(ts: datetime) -> datetime:
@@ -89,11 +90,20 @@ def _day(ts: datetime) -> datetime:
 
 def aggregate(rows: list[LedgerRow]) -> list[FocusRow]:
     """Daily rows from ledger rows, in a stable order."""
-    acc: OrderedDict[tuple[datetime, str, str, str, str, str, str], list[int | Decimal]] = (
-        OrderedDict()
-    )
+    acc: OrderedDict[
+        tuple[datetime, str, str, str, str, str, str, str | None], list[int | Decimal]
+    ] = OrderedDict()
     for r in sorted(rows, key=lambda r: (r.ts, r.team, r.project, r.model)):
-        key = (_day(r.ts), r.team, r.project, r.use_case, r.provider, r.model, r.price_book_version)
+        key = (
+            _day(r.ts),
+            r.team,
+            r.project,
+            r.use_case,
+            r.provider,
+            r.model,
+            r.price_book_version,
+            r.run_id,
+        )
         a = acc.setdefault(key, [0, 0, 0, 0, Decimal(0)])
         a[0] = int(a[0]) + 1
         a[1] = int(a[1]) + r.input_tokens
@@ -114,6 +124,7 @@ def aggregate(rows: list[LedgerRow]) -> list[FocusRow]:
             output_tokens=int(v[2]),
             cached_input_tokens=int(v[3]),
             cost=Decimal(v[4]),
+            run_id=k[7],
         )
         for k, v in acc.items()
     ]
@@ -174,7 +185,12 @@ def focus_csv(
                 "SkuId": r.model,
                 "SkuPriceId": f"{r.model}@{r.price_book_version}",
                 "Tags": json.dumps(
-                    {"team": r.team, "project": r.project, "use_case": r.use_case},
+                    {
+                        "team": r.team,
+                        "project": r.project,
+                        "use_case": r.use_case,
+                        **({"run_id": r.run_id} if r.run_id else {}),
+                    },
                     separators=(",", ":"),
                 ),
                 "x_Calls": r.calls,

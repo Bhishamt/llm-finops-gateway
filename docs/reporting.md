@@ -46,7 +46,8 @@ FinOps Open Cost and Usage Specification (FOCUS) format, one row per team, proje
 provider, model, price book version and UTC day, with the mandatory FOCUS 1.1 columns and
 `x_` columns for token detail (ADR-0023); `llm-finops-gateway ledger export --from ... --to ...`
 writes the same file from the command line for scheduled loads into a FOCUS dataset. Four rows
-of an export, columns trimmed (`Tags` holds the project and use case as JSON):
+of an export, columns trimmed (`Tags` holds the project, use case and, when the call sent one, the
+run id, as JSON):
 
 | ChargePeriodStart | SubAccountId | Tags | ResourceId | ConsumedQuantity | x_Calls | x_CachedInputTokens | BilledCost |
 | --- | --- | --- | --- | ---: | ---: | ---: | ---: |

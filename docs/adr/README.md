@@ -29,6 +29,7 @@ immutable once accepted; a later ADR supersedes an earlier one rather than editi
 | [0022](0022-configuration-hot-reload.md) | The price book and the policy file are reloaded when they change | Accepted |
 | [0023](0023-focus-export.md) | The ledger is exported in the FOCUS format | Accepted |
 | [0024](0024-litellm-dashboard-plugin.md) | The report page runs inside the LiteLLM dashboard as a plugin | Accepted |
+| [0025](0025-run-id.md) | A run id groups the calls of one agent or pipeline run | Accepted |
 
 ## Template
 
